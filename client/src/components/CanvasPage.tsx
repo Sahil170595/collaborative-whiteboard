@@ -78,7 +78,19 @@ export default function CanvasPage({
   const [redoCount, setRedoCount] = useState(0);
   const [onlineUsers, setOnlineUsers] = useState<PresenceUser[]>([]);
   const [wsConnected, setWsConnected] = useState(false);
+  const [wsStatus, setWsStatus] = useState<"connected" | "disconnected" | "reconnecting">("disconnected");
+  const [reconnectFailed, setReconnectFailed] = useState(false);
   const [error, setError] = useState("");
+
+  // --- Reconnection state (refs to avoid stale closures) ---
+  const reconnectAttemptRef = useRef(0);
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const shouldReconnectRef = useRef(false);
+  const connectWsFnRef = useRef<(() => void) | null>(null);
+
+  // --- Cursor lerp state ---
+  const cursorTargetsRef = useRef<Map<string, { x: number; y: number; timestamp: number }>>(new Map());
+  const lerpAnimFrameRef = useRef<number>(0);
 
   // --- Rendering ---
   const scheduleRender = useCallback(() => {
@@ -586,7 +598,7 @@ export default function CanvasPage({
     requestRender();
   }, [requestRender]);
 
-  // --- WebSocket Connection ---
+  // --- WebSocket Connection with Reconnection ---
   useEffect(() => {
     // StrictMode double-mount guard
     if (mountedRef.current) return;
@@ -614,115 +626,275 @@ export default function CanvasPage({
         }
       });
 
-    // Connect WebSocket
-    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const host = window.location.host;
-    const wsUrl = `${protocol}//${host}/ws?canvasId=${canvasId}&token=${token}`;
-    const ws = new WebSocket(wsUrl);
-    wsRef.current = ws;
+    // Reconnection constants
+    const MAX_RECONNECT_ATTEMPTS = 10;
+    const BACKOFF_DELAYS = [1000, 2000, 4000, 8000, 16000, 30000]; // cap at 30s
 
-    ws.onopen = () => {
-      setWsConnected(true);
-    };
+    function getBackoffDelay(attempt: number): number {
+      const baseDelay = BACKOFF_DELAYS[Math.min(attempt, BACKOFF_DELAYS.length - 1)];
+      // Jitter: delay * (0.5 + Math.random() * 0.5)
+      return baseDelay * (0.5 + Math.random() * 0.5);
+    }
 
-    ws.onmessage = (event) => {
-      let msg: ServerMessage;
-      try {
-        msg = JSON.parse(event.data) as ServerMessage;
-      } catch {
+    function connectWebSocket() {
+      const currentToken = getStoredToken();
+      if (!currentToken) {
+        onLogout();
         return;
       }
 
-      switch (msg.type) {
-        case "init":
-          wsInitReceivedRef.current = true;
-          shapesRef.current = msg.shapes;
-          seqRef.current = msg.seq;
-          onlineUsersRef.current = msg.users;
-          // Clear stale state from previous session (C3+C4)
-          undoStackRef.current = [];
-          redoStackRef.current = [];
-          pendingOpsRef.current.clear();
-          setUndoCount(0);
-          setRedoCount(0);
-          setOnlineUsers([...msg.users]);
-          requestRender();
-          break;
+      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+      const host = window.location.host;
+      const wsUrl = `${protocol}//${host}/ws?canvasId=${canvasId}&token=${currentToken}`;
+      const ws = new WebSocket(wsUrl);
+      wsRef.current = ws;
 
-        case "op": {
-          const isOwnEcho = pendingOpsRef.current.has(msg.opId);
-          if (isOwnEcho) {
-            pendingOpsRef.current.delete(msg.opId);
-          }
-          // For "add" ops that we sent: skip (shape already in array).
-          // For "update"/"delete" ops: ALWAYS re-apply from server to
-          // guarantee server-authoritative ordering under concurrent edits.
-          if (isOwnEcho && msg.op.kind === "add") {
-            // Already added optimistically — skip to avoid duplicate
-          } else {
-            shapesRef.current = applyOp(shapesRef.current, msg.op);
-            requestRender();
-          }
-          seqRef.current = msg.seq;
-          break;
+      ws.onopen = () => {
+        setWsConnected(true);
+        setWsStatus("connected");
+        setReconnectFailed(false);
+        reconnectAttemptRef.current = 0;
+        shouldReconnectRef.current = true;
+      };
+
+      ws.onmessage = (event) => {
+        let parsed: Record<string, unknown>;
+        try {
+          parsed = JSON.parse(event.data) as Record<string, unknown>;
+        } catch {
+          return;
         }
 
-        case "cursor":
-          cursorsRef.current.set(msg.userId, {
-            x: msg.x,
-            y: msg.y,
-            username: msg.username,
-            color:
-              onlineUsersRef.current.find((u) => u.userId === msg.userId)
-                ?.color || "#999",
-          });
-          requestRender();
-          break;
+        // Handle ping/pong before casting to ServerMessage (ping is not in the typed union)
+        if (parsed.type === "ping") {
+          const currentWs = wsRef.current;
+          if (currentWs && currentWs.readyState === WebSocket.OPEN) {
+            currentWs.send(JSON.stringify({ type: "pong" }));
+          }
+          return;
+        }
 
-        case "join":
-          onlineUsersRef.current = [
-            ...onlineUsersRef.current.filter(
-              (u) => u.userId !== msg.user.userId
-            ),
-            msg.user,
-          ];
-          setOnlineUsers([...onlineUsersRef.current]);
-          break;
+        const msg = parsed as ServerMessage;
 
-        case "leave":
-          onlineUsersRef.current = onlineUsersRef.current.filter(
-            (u) => u.userId !== msg.userId
-          );
-          setOnlineUsers([...onlineUsersRef.current]);
-          cursorsRef.current.delete(msg.userId);
-          requestRender();
-          break;
+        switch (msg.type) {
+          case "init":
+            wsInitReceivedRef.current = true;
+            shapesRef.current = msg.shapes;
+            seqRef.current = msg.seq;
+            onlineUsersRef.current = msg.users;
+            // Clear stale state from previous session (C3+C4)
+            undoStackRef.current = [];
+            redoStackRef.current = [];
+            pendingOpsRef.current.clear();
+            // Clear cursor lerp targets on reconnect
+            cursorTargetsRef.current.clear();
+            cursorsRef.current.clear();
+            setUndoCount(0);
+            setRedoCount(0);
+            setOnlineUsers([...msg.users]);
+            requestRender();
+            break;
 
-        case "error":
-          setError(msg.message);
-          break;
-      }
-    };
+          case "op": {
+            const isOwnEcho = pendingOpsRef.current.has(msg.opId);
+            if (isOwnEcho) {
+              pendingOpsRef.current.delete(msg.opId);
+            }
+            // For "add" ops that we sent: skip (shape already in array).
+            // For "update"/"delete" ops: ALWAYS re-apply from server to
+            // guarantee server-authoritative ordering under concurrent edits.
+            if (isOwnEcho && msg.op.kind === "add") {
+              // Already added optimistically — skip to avoid duplicate
+            } else {
+              shapesRef.current = applyOp(shapesRef.current, msg.op);
+              requestRender();
+            }
+            seqRef.current = msg.seq;
+            break;
+          }
 
-    ws.onclose = (event) => {
-      setWsConnected(false);
-      if (event.code === 4001) {
-        // JWT expired or invalid — force re-login
-        onLogout();
-      }
-    };
+          case "cursor": {
+            // Update cursor TARGET for lerp interpolation
+            cursorTargetsRef.current.set(msg.userId, {
+              x: msg.x,
+              y: msg.y,
+              timestamp: Date.now(),
+            });
+            // Ensure current cursor entry exists (first time)
+            if (!cursorsRef.current.has(msg.userId)) {
+              cursorsRef.current.set(msg.userId, {
+                x: msg.x,
+                y: msg.y,
+                username: msg.username,
+                color:
+                  onlineUsersRef.current.find((u) => u.userId === msg.userId)
+                    ?.color || "#999",
+                opacity: 1,
+              });
+            } else {
+              // Update metadata but NOT position (lerp loop handles position)
+              const existing = cursorsRef.current.get(msg.userId)!;
+              existing.username = msg.username;
+              existing.color =
+                onlineUsersRef.current.find((u) => u.userId === msg.userId)
+                  ?.color || existing.color;
+              existing.opacity = 1;
+            }
+            break;
+          }
 
-    ws.onerror = () => {
-      setError("WebSocket connection error.");
-    };
+          case "join":
+            onlineUsersRef.current = [
+              ...onlineUsersRef.current.filter(
+                (u) => u.userId !== msg.user.userId
+              ),
+              msg.user,
+            ];
+            setOnlineUsers([...onlineUsersRef.current]);
+            break;
+
+          case "leave":
+            onlineUsersRef.current = onlineUsersRef.current.filter(
+              (u) => u.userId !== msg.userId
+            );
+            setOnlineUsers([...onlineUsersRef.current]);
+            cursorsRef.current.delete(msg.userId);
+            cursorTargetsRef.current.delete(msg.userId);
+            requestRender();
+            break;
+
+          case "error":
+            setError(msg.message);
+            break;
+        }
+      };
+
+      ws.onclose = (event) => {
+        setWsConnected(false);
+        wsRef.current = null;
+
+        // Auth failure or access denied — don't reconnect
+        if (event.code === 4001 || event.code === 4003) {
+          shouldReconnectRef.current = false;
+          if (event.code === 4001) {
+            onLogout();
+          }
+          return;
+        }
+
+        // Attempt reconnection if we should
+        if (shouldReconnectRef.current && mountedRef.current) {
+          const attempt = reconnectAttemptRef.current;
+          if (attempt < MAX_RECONNECT_ATTEMPTS) {
+            setWsStatus("reconnecting");
+            const delay = getBackoffDelay(attempt);
+            reconnectAttemptRef.current = attempt + 1;
+            reconnectTimerRef.current = setTimeout(() => {
+              if (mountedRef.current) {
+                connectWebSocket();
+              }
+            }, delay);
+          } else {
+            // Max attempts exceeded
+            setWsStatus("disconnected");
+            setReconnectFailed(true);
+          }
+        } else {
+          setWsStatus("disconnected");
+        }
+      };
+
+      ws.onerror = () => {
+        // onclose will fire after onerror and handle reconnection
+      };
+    }
+
+    connectWsFnRef.current = connectWebSocket;
+    connectWebSocket();
 
     return () => {
+      connectWsFnRef.current = null;
       mountedRef.current = false;
-      ws.close();
-      wsRef.current = null;
+      shouldReconnectRef.current = false;
+      if (reconnectTimerRef.current) {
+        clearTimeout(reconnectTimerRef.current);
+        reconnectTimerRef.current = null;
+      }
+      const ws = wsRef.current;
+      if (ws) {
+        ws.close();
+        wsRef.current = null;
+      }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canvasId]);
+
+  // --- Manual reconnect handler ---
+  const handleManualReconnect = useCallback(() => {
+    reconnectAttemptRef.current = 0;
+    setReconnectFailed(false);
+    shouldReconnectRef.current = true;
+    setWsStatus("reconnecting");
+
+    if (connectWsFnRef.current) {
+      connectWsFnRef.current();
+    }
+  }, []);
+
+  // --- Cursor Lerp Animation Loop ---
+  useEffect(() => {
+    const LERP_FACTOR = 0.15;
+    const FADE_AFTER_MS = 5000;
+    const FADED_OPACITY = 0.3;
+
+    let running = true;
+
+    function lerpLoop() {
+      if (!running) return;
+
+      const now = Date.now();
+      let needsRender = false;
+
+      for (const [userId, target] of cursorTargetsRef.current) {
+        const cursor = cursorsRef.current.get(userId);
+        if (!cursor) continue;
+
+        // Lerp position toward target
+        const dx = target.x - cursor.x;
+        const dy = target.y - cursor.y;
+        if (Math.abs(dx) > 0.1 || Math.abs(dy) > 0.1) {
+          cursor.x = cursor.x + dx * LERP_FACTOR;
+          cursor.y = cursor.y + dy * LERP_FACTOR;
+          needsRender = true;
+        } else if (cursor.x !== target.x || cursor.y !== target.y) {
+          cursor.x = target.x;
+          cursor.y = target.y;
+          needsRender = true;
+        }
+
+        // Fade opacity after no update for 5 seconds
+        const age = now - target.timestamp;
+        const desiredOpacity = age > FADE_AFTER_MS ? FADED_OPACITY : 1;
+        if (cursor.opacity !== desiredOpacity) {
+          cursor.opacity = desiredOpacity;
+          needsRender = true;
+        }
+      }
+
+      if (needsRender) {
+        requestRender();
+      }
+
+      lerpAnimFrameRef.current = requestAnimationFrame(lerpLoop);
+    }
+
+    lerpAnimFrameRef.current = requestAnimationFrame(lerpLoop);
+
+    return () => {
+      running = false;
+      cancelAnimationFrame(lerpAnimFrameRef.current);
+    };
+  }, [requestRender]);
 
   // --- Event Listeners ---
   useEffect(() => {
@@ -806,7 +978,12 @@ export default function CanvasPage({
             alignItems: "center",
             gap: 6,
             fontSize: 11,
-            color: wsConnected ? "#27ae60" : "#e74c3c",
+            color:
+              wsStatus === "connected"
+                ? "#27ae60"
+                : wsStatus === "reconnecting"
+                ? "#f39c12"
+                : "#e74c3c",
             background: "#fff",
             padding: "3px 8px",
             borderRadius: 4,
@@ -818,11 +995,44 @@ export default function CanvasPage({
               width: 6,
               height: 6,
               borderRadius: "50%",
-              background: wsConnected ? "#27ae60" : "#e74c3c",
+              background:
+                wsStatus === "connected"
+                  ? "#27ae60"
+                  : wsStatus === "reconnecting"
+                  ? "#f39c12"
+                  : "#e74c3c",
             }}
           />
-          {wsConnected ? "Connected" : "Disconnected"}
+          {wsStatus === "connected"
+            ? "Connected"
+            : wsStatus === "reconnecting"
+            ? "Reconnecting..."
+            : "Disconnected"}
         </div>
+
+        {/* Connection lost banner after max reconnect attempts */}
+        {reconnectFailed && (
+          <div
+            onClick={handleManualReconnect}
+            style={{
+              position: "absolute",
+              top: 8,
+              left: "50%",
+              transform: "translateX(-50%)",
+              background: "#e74c3c",
+              color: "#fff",
+              padding: "8px 20px",
+              borderRadius: 6,
+              fontSize: 13,
+              fontWeight: 600,
+              cursor: "pointer",
+              boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
+              zIndex: 100,
+            }}
+          >
+            Connection lost. Click to retry.
+          </div>
+        )}
 
         {error && (
           <div

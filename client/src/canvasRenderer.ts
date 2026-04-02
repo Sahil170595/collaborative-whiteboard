@@ -5,6 +5,7 @@ export interface CursorInfo {
   y: number;
   username: string;
   color: string;
+  opacity?: number;
 }
 
 export interface SelectionState {
@@ -28,9 +29,21 @@ export function renderScene(
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, canvasWidth, canvasHeight);
 
-  // Draw all shapes
+  // Draw shapes with selected shape rendered last (on top) for visual "lift"
+  const selectedShapeId = selection?.shapeId ?? null;
+  let selectedShape: Shape | null = null;
+
   for (const shape of shapes) {
+    if (shape.id === selectedShapeId) {
+      selectedShape = shape;
+      continue; // skip — will draw last
+    }
     drawShape(ctx, shape);
+  }
+
+  // Draw selected shape on top of all others
+  if (selectedShape) {
+    drawShape(ctx, selectedShape);
   }
 
   // Draw preview shape
@@ -38,12 +51,9 @@ export function renderScene(
     drawShape(ctx, previewShape);
   }
 
-  // Draw selection
-  if (selection) {
-    const shape = shapes.find((s) => s.id === selection.shapeId);
-    if (shape) {
-      drawSelectionBox(ctx, shape);
-    }
+  // Draw selection box over the (already-drawn) selected shape
+  if (selection && selectedShape) {
+    drawSelectionBox(ctx, selectedShape);
   }
 
   // Draw remote cursors
@@ -145,6 +155,7 @@ export function getHandlePositions(
 
 function drawCursor(ctx: CanvasRenderingContext2D, cursor: CursorInfo): void {
   ctx.save();
+  ctx.globalAlpha = cursor.opacity ?? 1;
 
   // Draw cursor arrow
   ctx.fillStyle = cursor.color;
