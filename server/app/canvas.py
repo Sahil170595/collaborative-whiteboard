@@ -155,6 +155,7 @@ async def get_canvas(
                    stroke_width, text, font_size
             FROM shapes
             WHERE canvas_id = $1
+            ORDER BY id
             """,
             cid,
         )

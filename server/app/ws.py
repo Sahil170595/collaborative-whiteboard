@@ -316,7 +316,7 @@ async def websocket_endpoint(ws: WebSocket) -> None:
         # ── Send init ────────────────────────────────────────
         async with pool.acquire(timeout=5) as conn:
             rows = await conn.fetch(
-                "SELECT * FROM shapes WHERE canvas_id = $1",
+                "SELECT * FROM shapes WHERE canvas_id = $1 ORDER BY id",
                 cid,
             )
         shapes = [_row_to_shape(dict(r)) for r in rows]

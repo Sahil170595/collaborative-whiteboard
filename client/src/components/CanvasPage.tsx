@@ -167,6 +167,8 @@ export default function CanvasPage({
 
   // --- Undo/Redo ---
   const undo = useCallback(() => {
+    const ws = wsRef.current;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return; // don't burn history while disconnected
     const stack = undoStackRef.current;
     if (stack.length === 0) return;
     const entry = stack[stack.length - 1];
@@ -178,6 +180,8 @@ export default function CanvasPage({
   }, [sendOp]);
 
   const redo = useCallback(() => {
+    const ws = wsRef.current;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return; // don't burn history while disconnected
     const stack = redoStackRef.current;
     if (stack.length === 0) return;
     const entry = stack[stack.length - 1];
@@ -445,6 +449,10 @@ export default function CanvasPage({
           newH = drag.origH - dy;
         }
 
+        // Normalize negative dimensions (drag crossed opposite edge)
+        if (newW < 0) { newX += newW; newW = -newW; }
+        if (newH < 0) { newY += newH; newH = -newH; }
+
         shapesRef.current = shapesRef.current.map((s) =>
           s.id === drag.shapeId
             ? { ...s, x: newX, y: newY, width: newW, height: newH }
@@ -548,6 +556,10 @@ export default function CanvasPage({
   // --- Keyboard Handlers ---
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
+      // Don't hijack shortcuts when typing in an input/textarea
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || (e.target as HTMLElement)?.isContentEditable) return;
+
       // Undo: Ctrl+Z (not Shift)
       if (e.ctrlKey && !e.shiftKey && e.key === "z") {
         e.preventDefault();
@@ -782,8 +794,9 @@ export default function CanvasPage({
           return;
         }
 
-        // Attempt reconnection if we should
-        if (shouldReconnectRef.current && mountedRef.current) {
+        // Attempt reconnection — also retry if the very first connection failed
+        if ((shouldReconnectRef.current || reconnectAttemptRef.current === 0) && mountedRef.current) {
+          shouldReconnectRef.current = true; // ensure flag is set for subsequent attempts
           const attempt = reconnectAttemptRef.current;
           if (attempt < MAX_RECONNECT_ATTEMPTS) {
             setWsStatus("reconnecting");
