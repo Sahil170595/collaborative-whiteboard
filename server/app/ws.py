@@ -420,7 +420,7 @@ async def websocket_endpoint(ws: WebSocket) -> None:
 
     except WebSocketDisconnect:
         pass
-    except Exception as exc:
+    except Exception:
         # Send error before disconnecting so client knows what happened
         try:
             async with send_lock:

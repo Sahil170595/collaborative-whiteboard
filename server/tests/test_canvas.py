@@ -112,7 +112,7 @@ async def test_invite_by_username(client: AsyncClient):
 @pytest.mark.asyncio
 async def test_invite_by_email(client: AsyncClient):
     alice = await create_user(client, username="alice")
-    bob = await create_user(client, username="bob", email="bob@example.com")
+    await create_user(client, username="bob", email="bob@example.com")
     canvas = await create_canvas(client, alice["token"])
 
     resp = await client.post(
@@ -141,7 +141,7 @@ async def test_invite_user_not_found(client: AsyncClient):
 async def test_invite_not_a_member(client: AsyncClient):
     alice = await create_user(client, username="alice")
     bob = await create_user(client, username="bob")
-    carol = await create_user(client, username="carol")
+    await create_user(client, username="carol")
     canvas = await create_canvas(client, alice["token"])
 
     resp = await client.post(
@@ -156,7 +156,7 @@ async def test_invite_not_a_member(client: AsyncClient):
 @pytest.mark.asyncio
 async def test_invite_idempotent(client: AsyncClient):
     alice = await create_user(client, username="alice")
-    bob = await create_user(client, username="bob")
+    await create_user(client, username="bob")
     canvas = await create_canvas(client, alice["token"])
 
     # Invite twice — second should succeed silently
