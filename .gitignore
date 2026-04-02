@@ -7,3 +7,12 @@ __pycache__/
 *.pyc
 .venv/
 *.egg-info/
+SCRATCH.md
+PRD.md
+AGENTS.md
+BUILD_CONTRACT.md
+validation-instructions.md
+CLAUDE.md
+.claude/
+.history/
+*.tsbuildinfo
