@@ -31,9 +31,9 @@ export default function Auth({ initialMode, onAuth }: AuthProps) {
     } catch (err) {
       if (err instanceof ApiError) {
         const messages: Record<string, string> = {
-          username_taken: "Username is already taken.",
-          email_taken: "Email is already in use.",
-          invalid_credentials: "Invalid username or password.",
+          username_taken: "That username is already taken.",
+          email_taken: "That email is already in use.",
+          invalid_credentials: "Wrong username or password.",
         };
         setError(messages[err.code] || err.code);
       } else {
@@ -45,176 +45,209 @@ export default function Auth({ initialMode, onAuth }: AuthProps) {
   };
 
   return (
-    <div style={styles.container}>
-      <div style={styles.card}>
-        <h1 style={styles.title}>Whiteboard</h1>
-        <h2 style={styles.subtitle}>
-          {mode === "login" ? "Log In" : "Sign Up"}
+    <div style={s.page}>
+      <div style={s.card}>
+        <div style={s.logoRow}>
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#5b5bff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="3" y="3" width="18" height="18" rx="3" />
+            <path d="M8 16l3-8 3 8" />
+            <path d="M16 8v8" />
+          </svg>
+          <span style={s.logoText}>Whiteboard</span>
+        </div>
+
+        <h2 style={s.heading}>
+          {mode === "login" ? "Welcome back" : "Create account"}
         </h2>
-        <form onSubmit={handleSubmit} style={styles.form}>
-          <label style={styles.label}>
-            Username
+        <p style={s.subheading}>
+          {mode === "login"
+            ? "Sign in to your workspace"
+            : "Get started with collaborative drawing"}
+        </p>
+
+        <form onSubmit={handleSubmit} style={s.form}>
+          <div style={s.field}>
+            <label style={s.label}>Username</label>
             <input
-              style={styles.input}
+              style={s.input}
               type="text"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               required
               autoComplete="username"
+              placeholder="your-username"
             />
-          </label>
+          </div>
+
           {mode === "signup" && (
-            <label style={styles.label}>
-              Email
+            <div style={s.field}>
+              <label style={s.label}>Email</label>
               <input
-                style={styles.input}
+                style={s.input}
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
                 autoComplete="email"
+                placeholder="you@example.com"
               />
-            </label>
+            </div>
           )}
-          <label style={styles.label}>
-            Password
+
+          <div style={s.field}>
+            <label style={s.label}>Password</label>
             <input
-              style={styles.input}
+              style={s.input}
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
               minLength={4}
-              autoComplete={
-                mode === "signup" ? "new-password" : "current-password"
-              }
+              autoComplete={mode === "signup" ? "new-password" : "current-password"}
+              placeholder="Min. 4 characters"
             />
-          </label>
-          {error && <div style={styles.error}>{error}</div>}
-          <button type="submit" style={styles.button} disabled={loading}>
-            {loading
-              ? "Please wait..."
-              : mode === "login"
-                ? "Log In"
-                : "Sign Up"}
+          </div>
+
+          {error && <div style={s.error}>{error}</div>}
+
+          <button type="submit" style={s.submit} disabled={loading}>
+            {loading ? "Please wait..." : mode === "login" ? "Sign in" : "Create account"}
           </button>
         </form>
-        <p style={styles.switchText}>
-          {mode === "login" ? (
-            <>
-              Don&apos;t have an account?{" "}
-              <button
-                style={styles.link}
-                onClick={() => {
-                  setMode("signup");
-                  setError("");
-                }}
-              >
-                Sign up
-              </button>
-            </>
-          ) : (
-            <>
-              Already have an account?{" "}
-              <button
-                style={styles.link}
-                onClick={() => {
-                  setMode("login");
-                  setError("");
-                }}
-              >
-                Log in
-              </button>
-            </>
-          )}
-        </p>
+
+        <div style={s.divider}>
+          <span style={s.dividerLine} />
+          <span style={s.dividerText}>or</span>
+          <span style={s.dividerLine} />
+        </div>
+
+        <button
+          style={s.switchBtn}
+          onClick={() => { setMode(mode === "login" ? "signup" : "login"); setError(""); }}
+        >
+          {mode === "login" ? "Create a new account" : "Sign in to existing account"}
+        </button>
       </div>
     </div>
   );
 }
 
-const styles: Record<string, React.CSSProperties> = {
-  container: {
-    display: "flex",
-    justifyContent: "center",
-    alignItems: "center",
+const s: Record<string, React.CSSProperties> = {
+  page: {
     minHeight: "100vh",
-    background: "#f0f2f5",
-    fontFamily: "system-ui, -apple-system, sans-serif",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    background: "#f8f9fb",
+    fontFamily: "'DM Sans', system-ui, -apple-system, sans-serif",
   },
   card: {
+    width: 380,
+    maxWidth: "92vw",
     background: "#fff",
-    borderRadius: 8,
-    padding: "40px 32px",
-    boxShadow: "0 2px 12px rgba(0,0,0,0.1)",
-    width: 360,
-    maxWidth: "90vw",
+    borderRadius: 16,
+    padding: "36px 32px 28px",
+    boxShadow: "0 1px 3px rgba(0,0,0,0.04), 0 8px 32px rgba(0,0,0,0.06)",
+    border: "1px solid rgba(0,0,0,0.06)",
   },
-  title: {
-    margin: "0 0 4px",
-    fontSize: 24,
+  logoRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 28,
+  },
+  logoText: {
+    fontSize: 18,
     fontWeight: 700,
-    textAlign: "center" as const,
+    color: "#1a1a2e",
+    letterSpacing: -0.3,
   },
-  subtitle: {
+  heading: {
+    margin: "0 0 4px",
+    fontSize: 22,
+    fontWeight: 700,
+    color: "#1a1a2e",
+    letterSpacing: -0.4,
+  },
+  subheading: {
     margin: "0 0 24px",
-    fontSize: 16,
-    fontWeight: 400,
-    textAlign: "center" as const,
-    color: "#666",
+    fontSize: 14,
+    color: "#8b8fa3",
+    lineHeight: 1.4,
   },
   form: {
     display: "flex",
     flexDirection: "column" as const,
     gap: 16,
   },
-  label: {
+  field: {
     display: "flex",
     flexDirection: "column" as const,
-    gap: 4,
-    fontSize: 14,
-    fontWeight: 500,
-    color: "#333",
+    gap: 5,
+  },
+  label: {
+    fontSize: 13,
+    fontWeight: 600,
+    color: "#3d3d4e",
   },
   input: {
-    padding: "8px 12px",
-    borderRadius: 4,
-    border: "1px solid #ccc",
+    padding: "10px 14px",
+    borderRadius: 10,
+    border: "1.5px solid #e4e5eb",
     fontSize: 14,
+    color: "#1a1a2e",
     outline: "none",
+    transition: "border-color 0.15s, box-shadow 0.15s",
+    fontFamily: "inherit",
   },
-  button: {
-    padding: "10px 16px",
-    borderRadius: 4,
+  error: {
+    color: "#e03131",
+    fontSize: 13,
+    padding: "8px 12px",
+    background: "#fff5f5",
+    borderRadius: 8,
+    border: "1px solid #ffc9c9",
+  },
+  submit: {
+    padding: "11px 20px",
+    borderRadius: 10,
     border: "none",
-    background: "#0088ff",
+    background: "#5b5bff",
     color: "#fff",
     fontSize: 14,
     fontWeight: 600,
     cursor: "pointer",
+    fontFamily: "inherit",
+    transition: "background 0.15s, transform 0.1s",
     marginTop: 4,
   },
-  error: {
-    color: "#e74c3c",
-    fontSize: 13,
-    padding: "6px 10px",
-    background: "#fef2f2",
-    borderRadius: 4,
+  divider: {
+    display: "flex",
+    alignItems: "center",
+    gap: 12,
+    margin: "20px 0 16px",
   },
-  switchText: {
-    textAlign: "center" as const,
-    marginTop: 16,
-    fontSize: 13,
-    color: "#666",
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    background: "#e4e5eb",
   },
-  link: {
-    background: "none",
-    border: "none",
-    color: "#0088ff",
-    cursor: "pointer",
+  dividerText: {
+    fontSize: 12,
+    color: "#aaa",
+    fontWeight: 500,
+  },
+  switchBtn: {
+    width: "100%",
+    padding: "10px 16px",
+    borderRadius: 10,
+    border: "1.5px solid #e4e5eb",
+    background: "transparent",
+    color: "#5b5bff",
+    fontSize: 13,
     fontWeight: 600,
-    fontSize: 13,
-    padding: 0,
-    textDecoration: "underline",
+    cursor: "pointer",
+    fontFamily: "inherit",
+    transition: "background 0.15s, border-color 0.15s",
   },
 };

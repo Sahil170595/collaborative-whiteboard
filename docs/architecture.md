@@ -74,7 +74,7 @@ Configured in `client/vite.config.ts`. This only works when Vite runs on the hos
 | `types.py` | TypedDicts, constants | Shared contract types (read-only) |
 | `auth.py` | `auth_router` | Signup, login, `/me` endpoints |
 | `canvas.py` | `canvas_router` | Canvas list, create, detail, invite endpoints |
-| `ws.py` | `websocket_endpoint` | WebSocket handler: auth, init, ops, cursors, presence |
+| `ws.py` | `websocket_endpoint` | WebSocket handler: auth, init, ops, cursors, presence, ping/pong heartbeat |
 
 ---
 
@@ -87,25 +87,29 @@ Configured in `client/vite.config.ts`. This only works when Vite runs on the hos
     +-- page.kind === "login" | "signup"
     |     |
     |     +-- <Auth>
-    |           (login/signup forms, calls api.ts, stores token via authStore.ts)
+    |           (card-based login/signup with SVG logo, calls api.ts, stores token)
     |
     +-- page.kind === "canvases"
     |     |
     |     +-- <CanvasList>
-    |           (lists canvases, create form, logout)
+    |           (responsive grid of canvas cards, create form, logout)
     |
     +-- page.kind === "canvas"
           |
           +-- <CanvasPage key={canvasId}>
                 |
                 +-- <Toolbar>
-                |     (tool select, colors, undo/redo, back button)
+                |     (floating bottom bar with SVG icons, color palette, undo/redo)
+                |     (back button fixed top-left, separate from toolbar)
                 |
                 +-- <canvas> (HTML5 Canvas element)
-                |     (rendered by canvasRenderer.ts: shapes, selection, cursors)
+                |     (rendered by canvasRenderer.ts: dot grid, shapes, selection, cursors)
                 |
                 +-- <InvitePanel>
-                      (online users list, invite form)
+                |     (avatar row top-right, invite dropdown)
+                |
+                +-- Connection status indicator (bottom-left)
+                      (tri-state: connected/reconnecting/disconnected)
 ```
 
 ### Non-component modules
@@ -116,7 +120,7 @@ Configured in `client/vite.config.ts`. This only works when Vite runs on the hos
 | `api.ts` | HTTP client wrapping `fetch` with auth headers and error handling |
 | `authStore.ts` | localStorage wrapper for token and user profile |
 | `operations.ts` | `applyOp` (apply operation to shape array), `reverseOp` (build undo inverse) |
-| `canvasRenderer.ts` | `renderScene`, `hitTest`, `hitTestHandle`, shape drawing, cursor drawing |
+| `canvasRenderer.ts` | `renderScene` (dot grid, z-order lift, cursor opacity), `hitTest`, `hitTestHandle`, shape/cursor drawing |
 
 ---
 

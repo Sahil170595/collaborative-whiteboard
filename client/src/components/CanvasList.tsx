@@ -38,9 +38,7 @@ export default function CanvasList({
           }
         }
       });
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -56,7 +54,7 @@ export default function CanvasList({
     setError("");
     try {
       const canvas = await createCanvas({ name: newName.trim() });
-      setCanvases((prev) => [...prev, canvas]);
+      setCanvases((prev) => [canvas, ...prev]);
       setNewName("");
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
@@ -70,155 +68,224 @@ export default function CanvasList({
   };
 
   return (
-    <div style={styles.container}>
-      <div style={styles.header}>
-        <h1 style={styles.title}>My Canvases</h1>
-        <div style={styles.headerRight}>
-          <span style={styles.username}>{user?.username}</span>
-          <button style={styles.logoutBtn} onClick={handleLogout}>
-            Log out
+    <div style={s.page}>
+      <div style={s.container}>
+        {/* Header */}
+        <div style={s.header}>
+          <div>
+            <h1 style={s.title}>Your Canvases</h1>
+            <p style={s.subtitle}>
+              {user?.username ? `Signed in as ${user.username}` : ""}
+            </p>
+          </div>
+          <button style={s.logoutBtn} onClick={handleLogout}>
+            Sign out
           </button>
         </div>
+
+        {/* Create form */}
+        <form onSubmit={handleCreate} style={s.createForm}>
+          <input
+            style={s.input}
+            type="text"
+            placeholder="New canvas name..."
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            required
+          />
+          <button type="submit" style={s.createBtn} disabled={creating}>
+            {creating ? "..." : "Create"}
+          </button>
+        </form>
+
+        {error && <div style={s.error}>{error}</div>}
+
+        {/* Canvas grid */}
+        {loading ? (
+          <p style={s.empty}>Loading...</p>
+        ) : canvases.length === 0 ? (
+          <div style={s.emptyState}>
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#c5c6d0" strokeWidth="1.5" strokeLinecap="round">
+              <rect x="3" y="3" width="18" height="18" rx="3" />
+              <path d="M8 12h8M12 8v8" />
+            </svg>
+            <p style={s.emptyText}>No canvases yet. Create one above.</p>
+          </div>
+        ) : (
+          <div style={s.grid}>
+            {canvases.map((c) => (
+              <button
+                key={c.id}
+                style={s.card}
+                onClick={() => onSelectCanvas(c.id)}
+                onMouseEnter={(e) => {
+                  (e.currentTarget as HTMLElement).style.borderColor = "#5b5bff";
+                  (e.currentTarget as HTMLElement).style.transform = "translateY(-2px)";
+                }}
+                onMouseLeave={(e) => {
+                  (e.currentTarget as HTMLElement).style.borderColor = "#e4e5eb";
+                  (e.currentTarget as HTMLElement).style.transform = "none";
+                }}
+              >
+                <div style={s.cardPreview}>
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#b0b3c4" strokeWidth="1.5" strokeLinecap="round">
+                    <rect x="4" y="4" width="7" height="7" rx="1" />
+                    <circle cx="17" cy="7" r="3" />
+                    <path d="M4 17l5 3 5-3 6 3" />
+                  </svg>
+                </div>
+                <div style={s.cardBody}>
+                  <span style={s.cardName}>{c.name}</span>
+                  <span style={s.cardDate}>
+                    {new Date(c.createdAt).toLocaleDateString(undefined, {
+                      month: "short",
+                      day: "numeric",
+                    })}
+                  </span>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
-
-      <form onSubmit={handleCreate} style={styles.createForm}>
-        <input
-          style={styles.input}
-          type="text"
-          placeholder="New canvas name..."
-          value={newName}
-          onChange={(e) => setNewName(e.target.value)}
-          required
-        />
-        <button type="submit" style={styles.createBtn} disabled={creating}>
-          {creating ? "Creating..." : "Create Canvas"}
-        </button>
-      </form>
-
-      {error && <div style={styles.error}>{error}</div>}
-
-      {loading ? (
-        <p style={styles.emptyText}>Loading...</p>
-      ) : canvases.length === 0 ? (
-        <p style={styles.emptyText}>
-          No canvases yet. Create one to get started.
-        </p>
-      ) : (
-        <div style={styles.list}>
-          {canvases.map((c) => (
-            <button
-              key={c.id}
-              style={styles.canvasItem}
-              onClick={() => onSelectCanvas(c.id)}
-            >
-              <span style={styles.canvasName}>{c.name}</span>
-              <span style={styles.canvasDate}>
-                {new Date(c.createdAt).toLocaleDateString()}
-              </span>
-            </button>
-          ))}
-        </div>
-      )}
     </div>
   );
 }
 
-const styles: Record<string, React.CSSProperties> = {
+const s: Record<string, React.CSSProperties> = {
+  page: {
+    minHeight: "100vh",
+    background: "#f8f9fb",
+    fontFamily: "'DM Sans', system-ui, -apple-system, sans-serif",
+    padding: "40px 16px",
+  },
   container: {
     maxWidth: 640,
     margin: "0 auto",
-    padding: "24px 16px",
-    fontFamily: "system-ui, -apple-system, sans-serif",
   },
   header: {
     display: "flex",
     justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 24,
-  },
-  headerRight: {
-    display: "flex",
-    alignItems: "center",
-    gap: 12,
+    alignItems: "flex-start",
+    marginBottom: 28,
   },
   title: {
     margin: 0,
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: 700,
+    color: "#1a1a2e",
+    letterSpacing: -0.4,
   },
-  username: {
-    fontSize: 14,
-    color: "#666",
+  subtitle: {
+    margin: "4px 0 0",
+    fontSize: 13,
+    color: "#8b8fa3",
   },
   logoutBtn: {
-    background: "none",
-    border: "1px solid #ccc",
-    borderRadius: 4,
-    padding: "4px 12px",
-    cursor: "pointer",
+    padding: "7px 16px",
+    borderRadius: 8,
+    border: "1.5px solid #e4e5eb",
+    background: "#fff",
+    color: "#555",
     fontSize: 13,
-    color: "#333",
+    fontWeight: 500,
+    cursor: "pointer",
+    fontFamily: "inherit",
+    transition: "border-color 0.15s",
   },
   createForm: {
     display: "flex",
     gap: 8,
-    marginBottom: 16,
+    marginBottom: 20,
   },
   input: {
     flex: 1,
-    padding: "8px 12px",
-    borderRadius: 4,
-    border: "1px solid #ccc",
+    padding: "10px 14px",
+    borderRadius: 10,
+    border: "1.5px solid #e4e5eb",
     fontSize: 14,
+    color: "#1a1a2e",
+    outline: "none",
+    fontFamily: "inherit",
+    transition: "border-color 0.15s",
   },
   createBtn: {
-    padding: "8px 16px",
-    borderRadius: 4,
+    padding: "10px 20px",
+    borderRadius: 10,
     border: "none",
-    background: "#0088ff",
+    background: "#5b5bff",
     color: "#fff",
     fontSize: 14,
     fontWeight: 600,
     cursor: "pointer",
+    fontFamily: "inherit",
     whiteSpace: "nowrap",
+    transition: "background 0.15s",
   },
   error: {
-    color: "#e74c3c",
+    color: "#e03131",
     fontSize: 13,
-    padding: "6px 10px",
-    background: "#fef2f2",
-    borderRadius: 4,
-    marginBottom: 12,
+    padding: "8px 12px",
+    background: "#fff5f5",
+    borderRadius: 8,
+    border: "1px solid #ffc9c9",
+    marginBottom: 16,
   },
-  emptyText: {
-    color: "#888",
+  empty: {
+    color: "#8b8fa3",
     textAlign: "center" as const,
-    marginTop: 40,
+    marginTop: 48,
+    fontSize: 14,
   },
-  list: {
+  emptyState: {
     display: "flex",
     flexDirection: "column" as const,
-    gap: 4,
-  },
-  canvasItem: {
-    display: "flex",
-    justifyContent: "space-between",
     alignItems: "center",
-    padding: "12px 16px",
-    border: "1px solid #e0e0e0",
-    borderRadius: 6,
+    gap: 12,
+    marginTop: 64,
+  },
+  emptyText: {
+    color: "#8b8fa3",
+    fontSize: 14,
+    margin: 0,
+  },
+  grid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))",
+    gap: 12,
+  },
+  card: {
+    border: "1.5px solid #e4e5eb",
+    borderRadius: 12,
     background: "#fff",
     cursor: "pointer",
     textAlign: "left" as const,
+    overflow: "hidden",
+    transition: "border-color 0.15s, transform 0.15s, box-shadow 0.15s",
+    padding: 0,
+    fontFamily: "inherit",
+  },
+  cardPreview: {
+    height: 80,
+    background: "#f4f5f9",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  cardBody: {
+    padding: "12px 14px",
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  cardName: {
     fontSize: 14,
-    transition: "background 0.15s",
-  },
-  canvasName: {
     fontWeight: 600,
-    color: "#222",
+    color: "#1a1a2e",
   },
-  canvasDate: {
-    color: "#888",
-    fontSize: 12,
+  cardDate: {
+    fontSize: 11,
+    color: "#8b8fa3",
+    fontFamily: "'DM Mono', monospace",
   },
 };

@@ -23,17 +23,21 @@ Client                              Server
   |                                    | 6. Load shapes from DB
   |<--- { type: "init", ... } --------|
   |                                    | 7. Broadcast "join" to OTHER clients
+  |                                    | 8. Start heartbeat loop
   |                                    |
   |--- { type: "op", ... } ---------->| (message loop)
   |<--- { type: "op", ... } ----------|
   |--- { type: "cursor", ... } ------>|
   |<--- { type: "cursor", ... } ------|
+  |                                    |
+  |<--- { type: "ping" } -------------|  (every 30s)
+  |--- { type: "pong" } ------------->|
   |         ...                        |
   |                                    |
   |--- [disconnect] ----------------->|
-  |                                    | 8. Remove from presence
-  |                                    | 9. Broadcast "leave" to remaining clients
-  |                                    | 10. Clean up empty canvas state
+  |                                    | 9. Cancel heartbeat task
+  |                                    | 10. Remove from presence
+  |                                    | 11. Broadcast "leave" to remaining clients
 ```
 
 ### Pre-accept Validation
@@ -189,14 +193,45 @@ Round-robin based on the number of users currently on the canvas when the new us
 
 ### Cleanup
 
-When the last user disconnects from a canvas, the server cleans up all per-canvas state:
+On disconnect, the server cancels the heartbeat task, removes the user from presence, and broadcasts a `leave` message. Per-canvas state (`canvas_locks`, `seq_counters`) is intentionally kept even when the last user leaves, to avoid race conditions on simultaneous disconnect and to prevent seq from resetting if a user quickly reconnects.
 
-```python
-if not canvas_presence:
-    presence.pop(canvas_id, None)
-    seq_counters.pop(canvas_id, None)
-    canvas_locks.pop(canvas_id, None)
+---
+
+## Ping/Pong Heartbeat
+
+The server sends periodic pings to detect dead connections. This is an application-level heartbeat (JSON messages), not WebSocket protocol-level ping/pong frames.
+
+### Message Types
+
+| Direction | Message | Purpose |
+|-----------|---------|---------|
+| Server -> Client | `{ "type": "ping" }` | Liveness check |
+| Client -> Server | `{ "type": "pong" }` | Liveness response |
+
+### Timing
+
+- **Ping interval:** 30 seconds after the last ping.
+- **Pong timeout:** 10 seconds. If the client does not respond within this window, the server closes the connection with code 1000 and reason `"pong timeout"`.
+
+### Flow
+
 ```
+Server                              Client
+  |                                    |
+  |  [30s since last ping or connect]  |
+  |--- { type: "ping" } ------------->|
+  |                                    |  [client responds immediately]
+  |<--- { type: "pong" } -------------|
+  |                                    |
+  |  [30s later...]                    |
+  |--- { type: "ping" } ------------->|
+  |                                    |  [no response within 10s]
+  |--- close(1000, "pong timeout") -->|
+```
+
+### Client Implementation
+
+The client handles `ping` in `ws.onmessage` before the typed `ServerMessage` switch statement, since `ping`/`pong` are not part of the typed message union. On receiving `{ "type": "ping" }`, it immediately sends `{ "type": "pong" }`.
 
 ---
 

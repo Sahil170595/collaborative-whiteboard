@@ -33,7 +33,8 @@ CREATE TABLE shapes (
     stroke       TEXT NOT NULL DEFAULT '#000000',
     stroke_width DOUBLE PRECISION NOT NULL DEFAULT 2,
     text         TEXT,
-    font_size    DOUBLE PRECISION
+    font_size    DOUBLE PRECISION,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE INDEX idx_shapes_canvas ON shapes(canvas_id);

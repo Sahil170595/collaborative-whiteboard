@@ -66,7 +66,7 @@ def _row_to_shape(row: dict) -> dict:
     """Convert an asyncpg Record (snake_case) to a wire-format Shape (camelCase)."""
     shape: dict = {}
     for key, value in row.items():
-        if key in ("canvas_id",):
+        if key in ("canvas_id", "created_at"):
             continue  # internal, not on the wire
         # Omit None for optional fields (text, font_size) so the wire format
         # matches the NotRequired TypedDict contract.
@@ -312,11 +312,13 @@ async def websocket_endpoint(ws: WebSocket) -> None:
         "send_lock": send_lock,
     }
 
+    heartbeat_task = None
+
     try:
         # ── Send init ────────────────────────────────────────
         async with pool.acquire(timeout=5) as conn:
             rows = await conn.fetch(
-                "SELECT * FROM shapes WHERE canvas_id = $1 ORDER BY id",
+                "SELECT * FROM shapes WHERE canvas_id = $1 ORDER BY created_at, id",
                 cid,
             )
         shapes = [_row_to_shape(dict(r)) for r in rows]
@@ -426,16 +428,20 @@ async def websocket_endpoint(ws: WebSocket) -> None:
     finally:
         # ── Cleanup ──────────────────────────────────────────
         cancel_heartbeat.set()
-        try:
-            heartbeat_task.cancel()
-            await heartbeat_task
-        except Exception:
-            pass
+        if heartbeat_task is not None:
+            try:
+                heartbeat_task.cancel()
+                await heartbeat_task
+            except Exception:
+                pass
 
-        canvas_presence.pop(user_id, None)
-
-        # Broadcast leave to remaining clients
-        await _broadcast(canvas_id, {"type": "leave", "userId": user_id})
+        # Only remove presence if this socket is still the registered one.
+        # A second tab from the same user may have already replaced us.
+        info = canvas_presence.get(user_id)
+        if info and info["ws"] is ws:
+            canvas_presence.pop(user_id, None)
+            # Broadcast leave only if we were the active connection
+            await _broadcast(canvas_id, {"type": "leave", "userId": user_id})
 
         # Do NOT delete canvas_locks/seq_counters — avoids race on
         # simultaneous disconnect and prevents seq reset mid-session.

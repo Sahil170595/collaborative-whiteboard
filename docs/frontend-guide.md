@@ -7,26 +7,35 @@ App (App.tsx)
  |-- routing via discriminated union Page type
  |
  +-- Auth (components/Auth.tsx)
- |     Login/Signup forms. Calls api.ts, stores token via authStore.ts.
+ |     Card-based login/signup form with SVG logo and branded heading.
  |     Toggles between login and signup modes internally.
+ |     Calls api.ts, stores token via authStore.ts.
  |
  +-- CanvasList (components/CanvasList.tsx)
- |     Lists canvases via GET /api/canvases. Create form. Logout button.
- |     Navigates to CanvasPage on click.
+ |     Responsive grid of canvas cards (auto-fill, minmax 180px).
+ |     Each card has a preview area and name/date footer.
+ |     Create form. Logout button.
  |
  +-- CanvasPage (components/CanvasPage.tsx)
        The main whiteboard. Manages all real-time state.
+       Includes WebSocket reconnection with exponential backoff.
        |
        +-- Toolbar (components/Toolbar.tsx)
-       |     Tool selection (select, rectangle, ellipse, line, text).
-       |     Fill/stroke color pickers. Undo/redo buttons. Back button.
+       |     Floating bottom toolbar (fixed, centered, dark background).
+       |     Inline SVG icons for tools (select, rectangle, ellipse, line, text).
+       |     Fill/stroke color palette with custom color picker. Undo/redo.
+       |     Separate back button fixed at top-left.
        |
        +-- <canvas> (HTML5 Canvas element)
-       |     Rendered by canvasRenderer.ts. Mouse events handled by CanvasPage.
+       |     Rendered by canvasRenderer.ts with dot grid background.
+       |     Mouse events handled by CanvasPage.
        |
        +-- InvitePanel (components/InvitePanel.tsx)
-             Expandable panel showing online users with color dots.
-             Invite form (username or email input).
+       |     Avatar row (top-right): colored circle per online user with initial.
+       |     Plus button toggles invite dropdown. Invite by username or email.
+       |
+       +-- Connection status indicator (bottom-left)
+             Shows connected/reconnecting/disconnected with colored dot.
 ```
 
 ### Component Responsibilities
@@ -64,6 +73,12 @@ CanvasPage uses two categories of state:
 | `lastCursorSendRef` | `number` | Timestamp for cursor throttling. |
 | `mountedRef` | `boolean` | StrictMode double-mount guard. |
 | `wsInitReceivedRef` | `boolean` | Prevents HTTP-loaded shapes from overwriting WS init. |
+| `reconnectAttemptRef` | `number` | Current reconnect attempt count for exponential backoff. |
+| `reconnectTimerRef` | `setTimeout \| null` | Active reconnect timer so cleanup can cancel it. |
+| `shouldReconnectRef` | `boolean` | Whether to attempt reconnection on close. |
+| `connectWsFnRef` | `(() => void) \| null` | Stored `connectWebSocket` function for manual reconnect. |
+| `cursorTargetsRef` | `Map<string, {x, y, timestamp}>` | Target positions for cursor lerp interpolation. |
+| `lerpAnimFrameRef` | `number` | Animation frame ID for the cursor lerp loop. |
 
 **`useState` for UI that needs re-renders:**
 
@@ -76,6 +91,8 @@ CanvasPage uses two categories of state:
 | `redoCount` | `number` | Redo button enabled/disabled |
 | `onlineUsers` | `PresenceUser[]` | InvitePanel user list |
 | `wsConnected` | `boolean` | Connection status indicator |
+| `wsStatus` | `"connected" \| "disconnected" \| "reconnecting"` | Tri-state connection indicator |
+| `reconnectFailed` | `boolean` | Shows manual reconnect banner after max attempts |
 | `error` | `string` | Error banner |
 
 ### Why this approach
@@ -211,17 +228,21 @@ Called via `requestAnimationFrame` on every state change.
 ```
 1. ctx.save()
 2. ctx.setTransform(dpr, 0, 0, dpr, 0, 0)     // HiDPI scaling
-3. ctx.clearRect(0, 0, canvasWidth, canvasHeight)
-4. for each shape in shapes:
+3. Fill background (#f8f9fb)
+4. Draw dot grid (1px dots at 20px spacing, color #d4d5db)
+5. for each shape in shapes (EXCEPT selected shape):
      drawShape(ctx, shape)
-5. if previewShape:
+6. Draw selected shape LAST (z-order lift for visual prominence)
+7. if previewShape:
      drawShape(ctx, previewShape)               // live drawing preview
-6. if selection:
+8. if selection:
      drawSelectionBox(ctx, selectedShape)        // dashed rect + corner handles
-7. for each cursor in cursors:
-     drawCursor(ctx, cursor)                     // arrow + username label
-8. ctx.restore()
+9. for each cursor in cursors:
+     drawCursor(ctx, cursor)                     // arrow + username label (respects cursor.opacity)
+10. ctx.restore()
 ```
+
+**Changes from earlier version:** The background is now a filled rect + dot grid (not `clearRect`). Selected shapes are drawn last for a z-order "lift" effect. Cursor rendering respects an `opacity` field for idle fade-out.
 
 ### HiDPI Scaling
 
@@ -253,6 +274,7 @@ ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
 - Colored arrow polygon at cursor position.
 - Rounded rectangle label with white text showing the username.
+- `globalAlpha` is set from `cursor.opacity` (defaults to 1; fades to 0.3 after 5 seconds of inactivity via the lerp loop).
 
 ---
 
@@ -334,6 +356,47 @@ type Page =
 - `authStore.ts` wraps `localStorage` with `getStoredToken()`, `getStoredUser()`, `storeAuth()`, `clearAuth()`, `isAuthenticated()`.
 - `api.ts` reads the token from localStorage for the `Authorization: Bearer` header.
 - `CanvasPage` reads the token for the WebSocket URL query parameter.
+
+---
+
+## WebSocket Reconnection
+
+CanvasPage implements automatic reconnection with exponential backoff and jitter:
+
+- **Max attempts:** 10
+- **Backoff delays:** 1s, 2s, 4s, 8s, 16s, 30s (capped), each multiplied by a random jitter factor `(0.5 + Math.random() * 0.5)`.
+- **Auth failures (close codes 4001/4003)** are not retried. Code 4001 triggers logout.
+- After the first connection succeeds, `shouldReconnectRef` is set to `true`. If the very first connection attempt fails (server not yet ready), it still retries.
+- On reconnection, the server sends a fresh `init` message. The client clears undo/redo stacks, pendingOps, and cursor state on `init` to avoid stale data.
+- After max attempts, a clickable "Connection lost" banner appears. Clicking it resets the attempt counter and retries.
+- A tri-state status indicator (bottom-left corner) shows `connected` (green), `reconnecting` (yellow), or `disconnected` (red).
+
+### Ping/Pong Heartbeat (client side)
+
+The server sends `{ type: "ping" }` messages every 30 seconds. The client responds with `{ type: "pong" }`. This is handled in `ws.onmessage` before the typed `ServerMessage` switch, since `ping` is not part of the typed message union.
+
+---
+
+## Cursor Lerp Interpolation
+
+Remote cursor positions are smoothed using linear interpolation (lerp) rather than snapping directly to received coordinates:
+
+- Incoming cursor messages update `cursorTargetsRef` (target position + timestamp) but do not move the displayed cursor directly.
+- A dedicated `requestAnimationFrame` loop (`lerpLoop`) runs continuously and interpolates each cursor toward its target at `LERP_FACTOR = 0.15` per frame.
+- **Idle fade:** If a cursor target has not been updated for 5 seconds, its opacity is reduced to 0.3, providing a visual indication that the user is idle.
+- The lerp loop only triggers a re-render when at least one cursor position or opacity actually changed.
+
+---
+
+## Canvas Resize
+
+The canvas is resized based on its container (`containerRef`) rather than `window.innerWidth/innerHeight`. On `window.resize`, `resizeCanvas()` reads `container.getBoundingClientRect()`, sets the canvas CSS dimensions and backing store dimensions (`width * dpr`, `height * dpr`), then re-renders. This ensures the canvas fills its container correctly even if other UI elements affect layout.
+
+---
+
+## Input Guard on Keyboard Shortcuts
+
+The `handleKeyDown` handler checks the event target's tag name before processing shortcuts. If the target is an `INPUT`, `TEXTAREA`, or `contentEditable` element, the handler returns early. This prevents undo/redo/delete shortcuts from firing while the user types in the invite panel or other form fields.
 
 ---
 

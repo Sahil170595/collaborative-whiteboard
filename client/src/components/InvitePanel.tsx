@@ -12,7 +12,7 @@ export default function InvitePanel({ canvasId, onlineUsers }: InvitePanelProps)
   const [message, setMessage] = useState("");
   const [messageType, setMessageType] = useState<"success" | "error">("success");
   const [sending, setSending] = useState(false);
-  const [expanded, setExpanded] = useState(false);
+  const [showInvite, setShowInvite] = useState(false);
 
   const handleInvite = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -21,19 +21,20 @@ export default function InvitePanel({ canvasId, onlineUsers }: InvitePanelProps)
     setMessage("");
     try {
       await inviteToCanvas(canvasId, { identifier: identifier.trim() });
-      setMessage("Invitation sent!");
+      setMessage("Invited!");
       setMessageType("success");
       setIdentifier("");
+      setTimeout(() => setMessage(""), 2000);
     } catch (err) {
       if (err instanceof ApiError) {
         const messages: Record<string, string> = {
           user_not_found: "User not found.",
           canvas_not_found: "Canvas not found.",
-          not_a_member: "You are not a member of this canvas.",
+          not_a_member: "Not a member.",
         };
         setMessage(messages[err.code] || err.code);
       } else {
-        setMessage("Failed to send invitation.");
+        setMessage("Failed to invite.");
       }
       setMessageType("error");
     } finally {
@@ -42,53 +43,56 @@ export default function InvitePanel({ canvasId, onlineUsers }: InvitePanelProps)
   };
 
   return (
-    <div style={styles.panel}>
-      <button
-        style={styles.toggleBtn}
-        onClick={() => setExpanded(!expanded)}
-      >
-        Users ({onlineUsers.length}) {expanded ? "\u25B2" : "\u25BC"}
-      </button>
-
-      {expanded && (
-        <div style={styles.content}>
-          <div style={styles.userList}>
-            {onlineUsers.map((u) => (
-              <div key={u.userId} style={styles.userItem}>
-                <span
-                  style={{
-                    ...styles.dot,
-                    background: u.color,
-                  }}
-                />
-                <span>{u.username}</span>
-              </div>
-            ))}
+    <div style={s.wrapper}>
+      {/* User avatars — always visible */}
+      <div style={s.avatarRow}>
+        {onlineUsers.map((u) => (
+          <div
+            key={u.userId}
+            title={u.username}
+            style={{
+              ...s.avatar,
+              background: u.color,
+            }}
+          >
+            {u.username.charAt(0).toUpperCase()}
           </div>
+        ))}
+        <button
+          style={s.inviteBtn}
+          onClick={() => setShowInvite(!showInvite)}
+          title="Invite collaborator"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+            <path d="M12 5v14M5 12h14" />
+          </svg>
+        </button>
+      </div>
 
-          <form onSubmit={handleInvite} style={styles.form}>
+      {/* Invite dropdown */}
+      {showInvite && (
+        <div style={s.dropdown}>
+          <div style={s.dropdownHeader}>Invite to canvas</div>
+          <form onSubmit={handleInvite} style={s.form}>
             <input
-              style={styles.input}
+              style={s.input}
               type="text"
-              placeholder="Username or email..."
+              placeholder="Username or email"
               value={identifier}
               onChange={(e) => setIdentifier(e.target.value)}
               required
+              autoFocus
             />
-            <button type="submit" style={styles.inviteBtn} disabled={sending}>
-              {sending ? "..." : "Invite"}
+            <button type="submit" style={s.sendBtn} disabled={sending}>
+              {sending ? "..." : "Send"}
             </button>
           </form>
-
           {message && (
-            <div
-              style={{
-                ...styles.message,
-                color: messageType === "error" ? "#e74c3c" : "#27ae60",
-                background:
-                  messageType === "error" ? "#fef2f2" : "#f0fdf4",
-              }}
-            >
+            <div style={{
+              ...s.msg,
+              color: messageType === "error" ? "#e03131" : "#2b8a3e",
+              background: messageType === "error" ? "#fff5f5" : "#ebfbee",
+            }}>
               {message}
             </div>
           )}
@@ -98,78 +102,96 @@ export default function InvitePanel({ canvasId, onlineUsers }: InvitePanelProps)
   );
 }
 
-const styles: Record<string, React.CSSProperties> = {
-  panel: {
+const s: Record<string, React.CSSProperties> = {
+  wrapper: {
     position: "absolute",
-    top: 8,
-    right: 8,
-    zIndex: 100,
-    fontFamily: "system-ui, -apple-system, sans-serif",
-    fontSize: 13,
-  },
-  toggleBtn: {
-    padding: "6px 12px",
-    border: "1px solid #ccc",
-    borderRadius: 4,
-    background: "#fff",
-    cursor: "pointer",
-    fontSize: 13,
-    fontWeight: 600,
-    boxShadow: "0 1px 4px rgba(0,0,0,0.1)",
-  },
-  content: {
-    marginTop: 4,
-    padding: 12,
-    background: "#fff",
-    border: "1px solid #ddd",
-    borderRadius: 6,
-    boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
-    minWidth: 200,
-  },
-  userList: {
+    top: 14,
+    right: 14,
+    zIndex: 200,
     display: "flex",
     flexDirection: "column" as const,
-    gap: 4,
-    marginBottom: 12,
+    alignItems: "flex-end",
+    gap: 6,
+    fontFamily: "'DM Sans', system-ui, -apple-system, sans-serif",
   },
-  userItem: {
+  avatarRow: {
     display: "flex",
     alignItems: "center",
-    gap: 6,
-    fontSize: 13,
+    gap: 4,
+    padding: "4px 6px",
+    background: "rgba(255,255,255,0.9)",
+    backdropFilter: "blur(8px)",
+    borderRadius: 24,
+    boxShadow: "0 1px 6px rgba(0,0,0,0.1), 0 0 0 1px rgba(0,0,0,0.05)",
   },
-  dot: {
-    width: 8,
-    height: 8,
+  avatar: {
+    width: 28,
+    height: 28,
     borderRadius: "50%",
-    display: "inline-block",
-    flexShrink: 0,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontSize: 12,
+    fontWeight: 700,
+    color: "#fff",
+    textShadow: "0 1px 2px rgba(0,0,0,0.2)",
+  },
+  inviteBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: "50%",
+    border: "1.5px dashed #c5c6d0",
+    background: "transparent",
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    color: "#8b8fa3",
+    transition: "border-color 0.15s, color 0.15s",
+  },
+  dropdown: {
+    width: 240,
+    background: "#fff",
+    borderRadius: 12,
+    padding: 14,
+    boxShadow: "0 4px 20px rgba(0,0,0,0.12), 0 0 0 1px rgba(0,0,0,0.05)",
+  },
+  dropdownHeader: {
+    fontSize: 12,
+    fontWeight: 600,
+    color: "#8b8fa3",
+    textTransform: "uppercase" as const,
+    letterSpacing: 0.6,
+    marginBottom: 10,
   },
   form: {
     display: "flex",
-    gap: 4,
+    gap: 6,
   },
   input: {
     flex: 1,
-    padding: "4px 8px",
-    border: "1px solid #ccc",
-    borderRadius: 4,
-    fontSize: 12,
+    padding: "7px 10px",
+    borderRadius: 8,
+    border: "1.5px solid #e4e5eb",
+    fontSize: 13,
+    outline: "none",
+    fontFamily: "inherit",
   },
-  inviteBtn: {
-    padding: "4px 10px",
+  sendBtn: {
+    padding: "7px 14px",
+    borderRadius: 8,
     border: "none",
-    borderRadius: 4,
-    background: "#0088ff",
+    background: "#5b5bff",
     color: "#fff",
     fontSize: 12,
     fontWeight: 600,
     cursor: "pointer",
+    fontFamily: "inherit",
   },
-  message: {
+  msg: {
     marginTop: 8,
-    padding: "4px 8px",
-    borderRadius: 4,
+    padding: "5px 10px",
+    borderRadius: 6,
     fontSize: 12,
   },
 };

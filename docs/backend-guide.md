@@ -256,6 +256,22 @@ async def _broadcast(canvas_id, message, *, exclude_user=None):
 - `_broadcast_all`: Sends to ALL clients including sender (used for op echoes).
 - `asyncio.gather(*targets, return_exceptions=True)` ensures one slow client does not block others.
 
+### Ping/Pong Heartbeat
+
+The server runs a per-connection heartbeat loop to detect dead clients:
+
+```python
+PING_INTERVAL = 30  # seconds between pings
+PONG_TIMEOUT = 10   # seconds to wait for pong reply
+```
+
+- On connect, an `asyncio.Task` running `_heartbeat_loop` is created.
+- Every 30 seconds it sends `{ "type": "ping" }` to the client and waits up to 10 seconds for a `pong` message.
+- If no pong is received within the timeout, the connection is closed with code 1000 ("pong timeout").
+- The client responds to `ping` by sending `{ "type": "pong" }`, handled in the message loop before op/cursor dispatch.
+- Two `asyncio.Event` objects coordinate the loop: `pong_event` (set when pong received) and `cancel_heartbeat` (set during cleanup to stop the loop).
+- The heartbeat task is cancelled in the `finally` cleanup block on disconnect.
+
 ### Per-Canvas Locking and Seq Ordering
 
 ```python
@@ -356,15 +372,16 @@ try:
 except WebSocketDisconnect:
     pass
 except Exception:
-    pass  # catch-all
+    # send error message to client before cleanup
+    pass
 finally:
+    cancel_heartbeat.set()
+    heartbeat_task.cancel()
     canvas_presence.pop(user_id, None)
     await _broadcast(canvas_id, {"type": "leave", "userId": user_id})
-    if not canvas_presence:
-        presence.pop(canvas_id, None)
-        seq_counters.pop(canvas_id, None)
-        canvas_locks.pop(canvas_id, None)
 ```
+
+Note: `canvas_locks` and `seq_counters` are intentionally NOT cleaned up when the last user disconnects. This avoids a race condition on simultaneous disconnect and prevents seq from resetting mid-session if a user quickly reconnects.
 
 ---
 

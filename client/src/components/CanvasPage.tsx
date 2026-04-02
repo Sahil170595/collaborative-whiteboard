@@ -942,11 +942,11 @@ export default function CanvasPage({
   return (
     <div
       style={{
-        display: "flex",
-        flexDirection: "column",
+        position: "relative",
+        width: "100vw",
         height: "100vh",
         overflow: "hidden",
-        fontFamily: "system-ui, -apple-system, sans-serif",
+        fontFamily: "'DM Sans', system-ui, -apple-system, sans-serif",
       }}
     >
       <Toolbar
@@ -966,9 +966,10 @@ export default function CanvasPage({
       <div
         ref={containerRef}
         style={{
-          flex: 1,
+          width: "100%",
+          height: "100%",
           position: "relative",
-          background: "#f5f5f5",
+          background: "#f8f9fb",
           overflow: "hidden",
         }}
       >

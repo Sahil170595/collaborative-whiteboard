@@ -27,7 +27,20 @@ export function renderScene(
 ): void {
   ctx.save();
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+
+  // Background
+  ctx.fillStyle = "#f8f9fb";
+  ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+
+  // Dot grid
+  ctx.fillStyle = "#d4d5db";
+  const gridSpacing = 20;
+  const dotSize = 1;
+  for (let gx = gridSpacing; gx < canvasWidth; gx += gridSpacing) {
+    for (let gy = gridSpacing; gy < canvasHeight; gy += gridSpacing) {
+      ctx.fillRect(gx - dotSize / 2, gy - dotSize / 2, dotSize, dotSize);
+    }
+  }
 
   // Draw shapes with selected shape rendered last (on top) for visual "lift"
   const selectedShapeId = selection?.shapeId ?? null;
