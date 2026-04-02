@@ -34,6 +34,8 @@ CREATE TABLE shapes (
     stroke_width DOUBLE PRECISION NOT NULL DEFAULT 2,
     text         TEXT,
     font_size    DOUBLE PRECISION,
+    opacity      DOUBLE PRECISION NOT NULL DEFAULT 1,
+    border_radius DOUBLE PRECISION NOT NULL DEFAULT 0,
     created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 

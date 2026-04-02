@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import type { CanvasSummary } from "../types.ts";
-import { getCanvases, createCanvas, ApiError } from "../api.ts";
+import { getCanvases, createCanvas, deleteCanvas, ApiError } from "../api.ts";
 import { clearAuth, getStoredUser } from "../authStore.ts";
 
 interface CanvasListProps {
@@ -67,6 +67,23 @@ export default function CanvasList({
     }
   };
 
+  const handleDelete = async (canvasId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!confirm("Delete this canvas?")) return;
+    try {
+      await deleteCanvas(canvasId);
+      setCanvases((prev) => prev.filter((c) => c.id !== canvasId));
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        handleLogout();
+      } else if (err instanceof ApiError && err.status === 403) {
+        setError("Only the canvas owner can delete it.");
+      } else {
+        setError("Failed to delete canvas.");
+      }
+    }
+  };
+
   return (
     <div style={s.page}>
       <div style={s.container}>
@@ -119,12 +136,18 @@ export default function CanvasList({
                 style={s.card}
                 onClick={() => onSelectCanvas(c.id)}
                 onMouseEnter={(e) => {
-                  (e.currentTarget as HTMLElement).style.borderColor = "#5b5bff";
-                  (e.currentTarget as HTMLElement).style.transform = "translateY(-2px)";
+                  const el = e.currentTarget as HTMLElement;
+                  el.style.borderColor = "#5b5bff";
+                  el.style.transform = "translateY(-2px)";
+                  const delBtn = el.querySelector("[data-delete-btn]") as HTMLElement | null;
+                  if (delBtn) delBtn.style.opacity = "1";
                 }}
                 onMouseLeave={(e) => {
-                  (e.currentTarget as HTMLElement).style.borderColor = "#e4e5eb";
-                  (e.currentTarget as HTMLElement).style.transform = "none";
+                  const el = e.currentTarget as HTMLElement;
+                  el.style.borderColor = "#e4e5eb";
+                  el.style.transform = "none";
+                  const delBtn = el.querySelector("[data-delete-btn]") as HTMLElement | null;
+                  if (delBtn) delBtn.style.opacity = "0";
                 }}
               >
                 <div style={s.cardPreview}>
@@ -133,6 +156,25 @@ export default function CanvasList({
                     <circle cx="17" cy="7" r="3" />
                     <path d="M4 17l5 3 5-3 6 3" />
                   </svg>
+                  <span
+                    data-delete-btn
+                    role="button"
+                    title="Delete canvas"
+                    style={s.deleteBtn}
+                    onClick={(e) => handleDelete(c.id, e)}
+                    onMouseEnter={(e) => {
+                      (e.currentTarget as HTMLElement).style.background = "#e03131";
+                      (e.currentTarget as HTMLElement).style.color = "#fff";
+                    }}
+                    onMouseLeave={(e) => {
+                      (e.currentTarget as HTMLElement).style.background = "rgba(0,0,0,0.06)";
+                      (e.currentTarget as HTMLElement).style.color = "#8b8fa3";
+                    }}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                      <path d="M18 6L6 18M6 6l12 12" />
+                    </svg>
+                  </span>
                 </div>
                 <div style={s.cardBody}>
                   <span style={s.cardName}>{c.name}</span>
@@ -271,6 +313,26 @@ const s: Record<string, React.CSSProperties> = {
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
+    position: "relative" as const,
+  },
+  deleteBtn: {
+    position: "absolute" as const,
+    top: 6,
+    right: 6,
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    background: "rgba(0,0,0,0.06)",
+    color: "#8b8fa3",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "pointer",
+    opacity: 0,
+    transition: "opacity 0.15s, background 0.15s, color 0.15s",
+    border: "none",
+    padding: 0,
+    lineHeight: 1,
   },
   cardBody: {
     padding: "12px 14px",

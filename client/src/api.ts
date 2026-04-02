@@ -75,3 +75,7 @@ export async function inviteToCanvas(
 ): Promise<{ ok: true }> {
   return request<{ ok: true }>("POST", `/api/canvases/${canvasId}/invite`, data);
 }
+
+export async function deleteCanvas(canvasId: string): Promise<{ ok: true }> {
+  return request<{ ok: true }>("DELETE", `/api/canvases/${canvasId}`);
+}

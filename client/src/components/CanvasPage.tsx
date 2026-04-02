@@ -74,6 +74,7 @@ export default function CanvasPage({
   const [currentTool, setCurrentTool] = useState<Tool>("select");
   const [fillColor, setFillColor] = useState("#3498db");
   const [strokeColor, setStrokeColor] = useState("#000000");
+  const [opacity, setOpacity] = useState(1);
   const [undoCount, setUndoCount] = useState(0);
   const [redoCount, setRedoCount] = useState(0);
   const [onlineUsers, setOnlineUsers] = useState<PresenceUser[]>([]);
@@ -263,6 +264,23 @@ export default function CanvasPage({
     [doAction, requestRender]
   );
 
+  const handleOpacityChange = useCallback(
+    (newOpacity: number) => {
+      setOpacity(newOpacity);
+      const selId = selectedIdRef.current;
+      if (!selId) return;
+      const shape = shapesRef.current.find((s) => s.id === selId);
+      if (!shape) return;
+      const oldOpacity = (shape as any).opacity ?? 1;
+      if (oldOpacity === newOpacity) return;
+      doAction(
+        { kind: "update", shapeId: selId, props: { opacity: newOpacity } as any },
+        { kind: "update", shapeId: selId, props: { opacity: oldOpacity } as any }
+      );
+    },
+    [doAction]
+  );
+
   // --- Canvas coordinate helper ---
   const getCanvasCoords = useCallback(
     (e: MouseEvent): { x: number; y: number } => {
@@ -300,7 +318,8 @@ export default function CanvasPage({
           strokeWidth: 0,
           text,
           fontSize,
-        };
+          ...(opacity !== 1 ? { opacity } : {}),
+        } as Shape;
         const forward: Operation = { kind: "add", shape: newShape };
         const reverse: Operation = { kind: "delete", shapeId: newShape.id };
         doAction(forward, reverse);
@@ -338,6 +357,7 @@ export default function CanvasPage({
         const hit = hitTest(shapesRef.current, x, y);
         if (hit) {
           selectedIdRef.current = hit.id;
+          setOpacity((hit as any).opacity ?? 1);
           dragModeRef.current = {
             kind: "move",
             shapeId: hit.id,
@@ -349,6 +369,7 @@ export default function CanvasPage({
           requestRender();
         } else {
           selectedIdRef.current = null;
+          setOpacity(1);
           dragModeRef.current = { kind: "none" };
           requestRender();
         }
@@ -367,7 +388,8 @@ export default function CanvasPage({
         fill: shapeType === "line" ? "" : fillColor,
         stroke: strokeColor,
         strokeWidth: 2,
-      };
+        ...(opacity !== 1 ? { opacity } : {}),
+      } as Shape;
       dragModeRef.current = {
         kind: "draw",
         startX: x,
@@ -376,7 +398,7 @@ export default function CanvasPage({
       };
       requestRender();
     },
-    [currentTool, fillColor, strokeColor, getCanvasCoords, doAction, requestRender]
+    [currentTool, fillColor, strokeColor, opacity, getCanvasCoords, doAction, requestRender]
   );
 
   const handleMouseMove = useCallback(
@@ -956,6 +978,8 @@ export default function CanvasPage({
         strokeColor={strokeColor}
         onFillChange={handleFillChange}
         onStrokeChange={handleStrokeChange}
+        opacity={opacity}
+        onOpacityChange={handleOpacityChange}
         canUndo={undoCount > 0}
         canRedo={redoCount > 0}
         onUndo={undo}

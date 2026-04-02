@@ -9,6 +9,8 @@ interface ToolbarProps {
   strokeColor: string;
   onFillChange: (color: string) => void;
   onStrokeChange: (color: string) => void;
+  opacity: number;
+  onOpacityChange: (opacity: number) => void;
   canUndo: boolean;
   canRedo: boolean;
   onUndo: () => void;
@@ -90,6 +92,8 @@ export default function Toolbar({
   strokeColor,
   onFillChange,
   onStrokeChange,
+  opacity,
+  onOpacityChange,
   canUndo,
   canRedo,
   onUndo,
@@ -182,6 +186,26 @@ export default function Toolbar({
                   style={s.hiddenInput}
                 />
               </label>
+            </div>
+          </div>
+        </div>
+
+        <div style={s.sep} />
+
+        {/* Opacity group */}
+        <div style={s.group}>
+          <div style={s.colorSection}>
+            <span style={s.colorLabel}>Opacity</span>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                value={Math.round(opacity * 100)}
+                onChange={(e) => onOpacityChange(Number(e.target.value) / 100)}
+                style={s.opacitySlider}
+              />
+              <span style={s.opacityValue}>{Math.round(opacity * 100)}%</span>
             </div>
           </div>
         </div>
@@ -315,5 +339,19 @@ const s: Record<string, React.CSSProperties> = {
     height: 0,
     opacity: 0,
     overflow: "hidden" as const,
+  },
+  opacitySlider: {
+    width: 80,
+    height: 4,
+    cursor: "pointer",
+    accentColor: "#5b5bff",
+  },
+  opacityValue: {
+    fontSize: 10,
+    fontWeight: 600,
+    color: "#888",
+    fontFamily: "'DM Mono', monospace",
+    minWidth: 30,
+    textAlign: "right" as const,
   },
 };

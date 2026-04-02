@@ -25,6 +25,10 @@ from app.types import (
     PresenceUser,
 )
 
+# Local mapping overrides for columns not in types.py
+_EXTRA_DB_TO_WIRE = {"border_radius": "borderRadius"}
+_EXTRA_WIRE_TO_DB = {"borderRadius": "border_radius"}
+
 try:
     import jwt
 except ImportError:  # pragma: no cover – pyjwt is a runtime dep
@@ -72,7 +76,7 @@ def _row_to_shape(row: dict) -> dict:
         # matches the NotRequired TypedDict contract.
         if value is None:
             continue
-        wire_key = SHAPE_DB_TO_WIRE.get(key, key)
+        wire_key = SHAPE_DB_TO_WIRE.get(key) or _EXTRA_DB_TO_WIRE.get(key, key)
         # UUID -> str
         if hasattr(value, "hex"):
             shape[wire_key] = str(value)
@@ -84,6 +88,7 @@ def _row_to_shape(row: dict) -> dict:
 _ALLOWED_SHAPE_COLS = frozenset({
     "id", "type", "x", "y", "width", "height",
     "fill", "stroke", "stroke_width", "text", "font_size",
+    "opacity", "border_radius",
 })
 
 
@@ -96,7 +101,7 @@ def _shape_to_columns(shape: dict) -> tuple[list[str], list]:
     cols: list[str] = []
     vals: list = []
     for wire_key, value in shape.items():
-        db_key = SHAPE_WIRE_TO_DB.get(wire_key, wire_key)
+        db_key = SHAPE_WIRE_TO_DB.get(wire_key) or _EXTRA_WIRE_TO_DB.get(wire_key, wire_key)
         if db_key not in _ALLOWED_SHAPE_COLS:
             continue
         # asyncpg requires uuid.UUID for UUID columns
@@ -216,7 +221,7 @@ async def _persist_update(conn, canvas_id: str, shape_id: str, props: dict) -> b
     vals: list = []
     idx = 1
     for wire_key, value in props.items():
-        db_key = SHAPE_WIRE_TO_DB.get(wire_key, wire_key)
+        db_key = SHAPE_WIRE_TO_DB.get(wire_key) or _EXTRA_WIRE_TO_DB.get(wire_key, wire_key)
         if db_key not in _ALLOWED_UPDATE_COLS:
             continue
         set_parts.append(f"{db_key} = ${idx}")

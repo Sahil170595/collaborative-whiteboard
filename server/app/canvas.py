@@ -274,3 +274,32 @@ async def invite_to_canvas(
         )
 
     return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# DELETE /{canvas_id} — delete a canvas (owner only)
+# ---------------------------------------------------------------------------
+
+
+@canvas_router.delete("/{canvas_id}", response_model=None)
+async def delete_canvas(
+    canvas_id: str,
+    user: AuthUser = Depends(get_current_user),
+) -> dict | JSONResponse:
+    pool = await get_pool()
+    try:
+        cid = _uuid.UUID(canvas_id)
+    except (ValueError, AttributeError):
+        return JSONResponse(status_code=404, content={"error": "not_found"})
+    uid = _uuid.UUID(user["id"])
+    async with pool.acquire() as conn:
+        canvas_row = await conn.fetchrow(
+            "SELECT owner_id FROM canvases WHERE id = $1",
+            cid,
+        )
+        if canvas_row is None:
+            return JSONResponse(status_code=404, content={"error": "not_found"})
+        if str(canvas_row["owner_id"]) != str(uid):
+            return JSONResponse(status_code=403, content={"error": "not_owner"})
+        await conn.execute("DELETE FROM canvases WHERE id = $1", cid)
+    return {"ok": True}

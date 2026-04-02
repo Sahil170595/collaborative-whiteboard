@@ -79,17 +79,25 @@ export function renderScene(
 
 function drawShape(ctx: CanvasRenderingContext2D, shape: Shape): void {
   ctx.save();
+  ctx.globalAlpha = (shape as any).opacity ?? 1;
   ctx.fillStyle = shape.fill || "transparent";
   ctx.strokeStyle = shape.stroke || "#000000";
   ctx.lineWidth = shape.strokeWidth;
 
   switch (shape.type) {
-    case "rectangle":
-      if (shape.fill) {
-        ctx.fillRect(shape.x, shape.y, shape.width, shape.height);
+    case "rectangle": {
+      const br = (shape as any).borderRadius || 0;
+      if (br > 0) {
+        ctx.beginPath();
+        ctx.roundRect(shape.x, shape.y, shape.width, shape.height, br);
+        if (shape.fill) ctx.fill();
+        ctx.stroke();
+      } else {
+        if (shape.fill) ctx.fillRect(shape.x, shape.y, shape.width, shape.height);
+        ctx.strokeRect(shape.x, shape.y, shape.width, shape.height);
       }
-      ctx.strokeRect(shape.x, shape.y, shape.width, shape.height);
       break;
+    }
 
     case "ellipse": {
       const cx = shape.x + shape.width / 2;
@@ -115,6 +123,10 @@ function drawShape(ctx: CanvasRenderingContext2D, shape: Shape): void {
     case "text": {
       const fontSize = shape.fontSize || 16;
       ctx.font = `${fontSize}px sans-serif`;
+      const measured = ctx.measureText(shape.text || "");
+      // Update stored width to match actual rendered width for hit-testing
+      shape.width = measured.width;
+      shape.height = fontSize * 1.2; // line height
       ctx.fillStyle = shape.fill || "#000000";
       ctx.fillText(shape.text || "", shape.x, shape.y + fontSize);
       if (shape.stroke && shape.strokeWidth > 0) {
