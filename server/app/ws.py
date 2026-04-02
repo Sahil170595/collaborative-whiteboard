@@ -142,6 +142,46 @@ async def _broadcast_all(canvas_id: str, message: dict) -> None:
         await asyncio.gather(*targets, return_exceptions=True)
 
 
+# ── Ping/Pong heartbeat ─────────────────────────────────────
+
+PING_INTERVAL = 30  # seconds between pings
+PONG_TIMEOUT = 10   # seconds to wait for pong reply
+
+
+async def _heartbeat_loop(
+    ws: WebSocket,
+    send_lock: asyncio.Lock,
+    pong_event: asyncio.Event,
+    cancel_event: asyncio.Event,
+) -> None:
+    """Send periodic pings and close the connection if pong is not received in time."""
+    try:
+        while not cancel_event.is_set():
+            # Wait PING_INTERVAL seconds or until cancelled
+            try:
+                await asyncio.wait_for(cancel_event.wait(), timeout=PING_INTERVAL)
+                return  # cancel_event was set
+            except asyncio.TimeoutError:
+                pass  # time to ping
+
+            # Send ping
+            pong_event.clear()
+            await _safe_send(ws, json.dumps({"type": "ping"}), send_lock)
+
+            # Wait for pong
+            try:
+                await asyncio.wait_for(pong_event.wait(), timeout=PONG_TIMEOUT)
+            except asyncio.TimeoutError:
+                # No pong received — close the connection
+                try:
+                    await ws.close(code=1000, reason="pong timeout")
+                except Exception:
+                    pass
+                return
+    except asyncio.CancelledError:
+        pass
+
+
 # ── Op persistence ───────────────────────────────────────────
 
 
@@ -251,6 +291,10 @@ async def websocket_endpoint(ws: WebSocket) -> None:
     # Per-connection send lock to prevent frame interleaving (CLAUDE.md gotcha #5)
     send_lock = asyncio.Lock()
 
+    # Heartbeat events
+    pong_event = asyncio.Event()
+    cancel_heartbeat = asyncio.Event()
+
     # ── Presence ─────────────────────────────────────────────
     canvas_presence = presence[canvas_id]
     color_index = len(canvas_presence) % len(CURSOR_PALETTE)
@@ -294,6 +338,11 @@ async def websocket_endpoint(ws: WebSocket) -> None:
         # Broadcast join to others
         await _broadcast(canvas_id, {"type": "join", "user": dict(me)}, exclude_user=user_id)
 
+        # Start heartbeat task
+        heartbeat_task = asyncio.create_task(
+            _heartbeat_loop(ws, send_lock, pong_event, cancel_heartbeat)
+        )
+
         # ── Message loop ─────────────────────────────────────
         while True:
             raw = await ws.receive_text()
@@ -303,6 +352,10 @@ async def websocket_endpoint(ws: WebSocket) -> None:
                 continue  # ignore malformed messages
 
             msg_type = msg.get("type")
+
+            if msg_type == "pong":
+                pong_event.set()
+                continue
 
             if msg_type == "op":
                 op = msg.get("op")
@@ -372,6 +425,13 @@ async def websocket_endpoint(ws: WebSocket) -> None:
             pass
     finally:
         # ── Cleanup ──────────────────────────────────────────
+        cancel_heartbeat.set()
+        try:
+            heartbeat_task.cancel()
+            await heartbeat_task
+        except Exception:
+            pass
+
         canvas_presence.pop(user_id, None)
 
         # Broadcast leave to remaining clients
