@@ -11,6 +11,8 @@ interface ToolbarProps {
   onStrokeChange: (color: string) => void;
   opacity: number;
   onOpacityChange: (opacity: number) => void;
+  fontSize: number;
+  onFontSizeChange: (size: number) => void;
   canUndo: boolean;
   canRedo: boolean;
   onUndo: () => void;
@@ -23,37 +25,27 @@ const PALETTE = [
   "#40c057", "#228be6", "#7950f2", "#ffffff",
 ];
 
-// SVG icon paths — minimal, geometric
-const icons: Record<Tool, string> = {
-  select:
-    "M4 2l12 9.5-5.3 1.8L14.5 22 11 20l-3.8-8.7L4 13V2z",
-  rectangle:
-    "M4 5h16v14H4z",
-  ellipse:
-    "M12 6c4.4 0 8 2.7 8 6s-3.6 6-8 6-8-2.7-8-6 3.6-6 8-6z",
-  line:
-    "M4 20L20 4",
-  text:
-    "M5 6h14M12 6v14M9 20h6",
-};
+const FONT_SIZES = [12, 16, 20, 24, 32, 48, 64];
 
 function ToolIcon({ tool, active }: { tool: Tool; active: boolean }) {
-  const isStroke = tool === "line" || tool === "text";
+  const color = active ? "#fff" : "#b0b3c4";
+  const size = 22;
   return (
-    <svg
-      width="18"
-      height="18"
-      viewBox="0 0 24 24"
-      fill={isStroke ? "none" : active ? "#fff" : "#c1c1c1"}
-      stroke={isStroke || tool === "select" ? (active ? "#fff" : "#c1c1c1") : "none"}
-      strokeWidth={isStroke ? 2.2 : tool === "select" ? 1.5 : 0}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      {tool === "rectangle" ? (
-        <rect x="4" y="5" width="16" height="14" rx="1.5" fill={active ? "#fff" : "#c1c1c1"} stroke="none" />
-      ) : (
-        <path d={icons[tool]} />
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" strokeLinecap="round" strokeLinejoin="round">
+      {tool === "select" && (
+        <path d="M4 2l12 9.5-5.3 1.8L14.5 22 11 20l-3.8-8.7L4 13V2z" fill={color} stroke={color} strokeWidth="1" />
+      )}
+      {tool === "rectangle" && (
+        <rect x="4" y="5" width="16" height="14" rx="2" fill={active ? color : "none"} stroke={color} strokeWidth="2" />
+      )}
+      {tool === "ellipse" && (
+        <ellipse cx="12" cy="12" rx="8" ry="6" fill={active ? color : "none"} stroke={color} strokeWidth="2" />
+      )}
+      {tool === "line" && (
+        <path d="M4 20L20 4" stroke={color} strokeWidth="2.5" />
+      )}
+      {tool === "text" && (
+        <path d="M5 6h14M12 6v14M9 20h6" stroke={color} strokeWidth="2.5" />
       )}
     </svg>
   );
@@ -61,7 +53,7 @@ function ToolIcon({ tool, active }: { tool: Tool; active: boolean }) {
 
 function UndoIcon() {
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M3 10h13a4 4 0 010 8H9" />
       <path d="M7 6l-4 4 4 4" />
     </svg>
@@ -70,7 +62,7 @@ function UndoIcon() {
 
 function RedoIcon() {
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M21 10H8a4 4 0 000 8h7" />
       <path d="M17 6l4 4-4 4" />
     </svg>
@@ -79,7 +71,7 @@ function RedoIcon() {
 
 const tools: { id: Tool; label: string; shortcut: string }[] = [
   { id: "select", label: "Select", shortcut: "V" },
-  { id: "rectangle", label: "Rectangle", shortcut: "R" },
+  { id: "rectangle", label: "Rect", shortcut: "R" },
   { id: "ellipse", label: "Ellipse", shortcut: "O" },
   { id: "line", label: "Line", shortcut: "L" },
   { id: "text", label: "Text", shortcut: "T" },
@@ -94,6 +86,8 @@ export default function Toolbar({
   onStrokeChange,
   opacity,
   onOpacityChange,
+  fontSize,
+  onFontSizeChange,
   canUndo,
   canRedo,
   onUndo,
@@ -102,134 +96,128 @@ export default function Toolbar({
 }: ToolbarProps) {
   return (
     <>
-      {/* Back button — top left, minimal */}
+      {/* Back button */}
       <button onClick={onBack} style={s.backBtn} title="Back to canvases">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#666" strokeWidth="2" strokeLinecap="round">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#555" strokeWidth="2" strokeLinecap="round">
           <path d="M15 19l-7-7 7-7" />
         </svg>
       </button>
 
-      {/* Floating bottom toolbar */}
+      {/* Floating bottom toolbar — multi-row */}
       <div style={s.bar}>
-        {/* Tool group */}
-        <div style={s.group}>
-          {tools.map((t) => (
-            <button
-              key={t.id}
-              onClick={() => onToolChange(t.id)}
-              title={`${t.label} (${t.shortcut})`}
-              style={{
-                ...s.btn,
-                background: currentTool === t.id ? "#5b5bff" : "transparent",
-              }}
-            >
-              <ToolIcon tool={t.id} active={currentTool === t.id} />
+        {/* Row 1: Tools + Undo/Redo */}
+        <div style={s.row}>
+          <div style={s.group}>
+            {tools.map((t) => (
+              <button
+                key={t.id}
+                onClick={() => onToolChange(t.id)}
+                title={`${t.label} (${t.shortcut})`}
+                style={{
+                  ...s.toolBtn,
+                  background: currentTool === t.id ? "#5b5bff" : "transparent",
+                }}
+              >
+                <ToolIcon tool={t.id} active={currentTool === t.id} />
+                <span style={{
+                  ...s.toolLabel,
+                  color: currentTool === t.id ? "#fff" : "#8b8fa3",
+                }}>{t.label}</span>
+              </button>
+            ))}
+          </div>
+
+          <div style={s.sep} />
+
+          <div style={s.group}>
+            <button onClick={onUndo} disabled={!canUndo} title="Undo (Ctrl+Z)"
+              style={{ ...s.actionBtn, opacity: canUndo ? 1 : 0.3 }}>
+              <UndoIcon />
+              <span style={s.actionLabel}>Undo</span>
             </button>
-          ))}
+            <button onClick={onRedo} disabled={!canRedo} title="Redo (Ctrl+Shift+Z)"
+              style={{ ...s.actionBtn, opacity: canRedo ? 1 : 0.3 }}>
+              <RedoIcon />
+              <span style={s.actionLabel}>Redo</span>
+            </button>
+          </div>
         </div>
 
-        <div style={s.sep} />
-
-        {/* Color group */}
-        <div style={s.group}>
-          <div style={s.colorSection}>
-            <span style={s.colorLabel}>Fill</span>
+        {/* Row 2: Colors + Opacity + Font Size */}
+        <div style={s.divider} />
+        <div style={s.row}>
+          {/* Fill */}
+          <div style={s.propGroup}>
+            <span style={s.propLabel}>Fill</span>
             <div style={s.swatchRow}>
               {PALETTE.map((c) => (
-                <button
-                  key={`fill-${c}`}
-                  onClick={() => onFillChange(c)}
-                  title={c}
+                <button key={`f-${c}`} onClick={() => onFillChange(c)} title={c}
                   style={{
                     ...s.swatch,
                     background: c,
-                    boxShadow: fillColor === c ? "0 0 0 2px #5b5bff" : c === "#ffffff" ? "inset 0 0 0 1px #444" : "none",
-                  }}
-                />
+                    boxShadow: fillColor === c ? "0 0 0 2px #5b5bff" : c === "#ffffff" ? "inset 0 0 0 1px #555" : "none",
+                  }} />
               ))}
               <label style={s.customColor}>
                 <span style={{ ...s.swatch, background: fillColor, cursor: "pointer" }}>
                   <span style={s.plusIcon}>+</span>
                 </span>
-                <input
-                  type="color"
-                  value={fillColor}
-                  onChange={(e) => onFillChange(e.target.value)}
-                  style={s.hiddenInput}
-                />
+                <input type="color" value={fillColor} onChange={(e) => onFillChange(e.target.value)} style={s.hiddenInput} />
               </label>
             </div>
           </div>
-          <div style={s.colorSection}>
-            <span style={s.colorLabel}>Stroke</span>
+
+          <div style={s.sep} />
+
+          {/* Stroke */}
+          <div style={s.propGroup}>
+            <span style={s.propLabel}>Stroke</span>
             <div style={s.swatchRow}>
               {PALETTE.map((c) => (
-                <button
-                  key={`stroke-${c}`}
-                  onClick={() => onStrokeChange(c)}
-                  title={c}
+                <button key={`s-${c}`} onClick={() => onStrokeChange(c)} title={c}
                   style={{
                     ...s.swatch,
                     background: c,
-                    boxShadow: strokeColor === c ? "0 0 0 2px #5b5bff" : c === "#ffffff" ? "inset 0 0 0 1px #444" : "none",
-                  }}
-                />
+                    boxShadow: strokeColor === c ? "0 0 0 2px #5b5bff" : c === "#ffffff" ? "inset 0 0 0 1px #555" : "none",
+                  }} />
               ))}
               <label style={s.customColor}>
                 <span style={{ ...s.swatch, background: strokeColor, cursor: "pointer" }}>
                   <span style={s.plusIcon}>+</span>
                 </span>
-                <input
-                  type="color"
-                  value={strokeColor}
-                  onChange={(e) => onStrokeChange(e.target.value)}
-                  style={s.hiddenInput}
-                />
+                <input type="color" value={strokeColor} onChange={(e) => onStrokeChange(e.target.value)} style={s.hiddenInput} />
               </label>
             </div>
           </div>
-        </div>
 
-        <div style={s.sep} />
+          <div style={s.sep} />
 
-        {/* Opacity group */}
-        <div style={s.group}>
-          <div style={s.colorSection}>
-            <span style={s.colorLabel}>Opacity</span>
+          {/* Opacity */}
+          <div style={s.propGroup}>
+            <span style={s.propLabel}>Opacity</span>
             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <input
-                type="range"
-                min={0}
-                max={100}
-                value={Math.round(opacity * 100)}
+              <input type="range" min={0} max={100} value={Math.round(opacity * 100)}
                 onChange={(e) => onOpacityChange(Number(e.target.value) / 100)}
-                style={s.opacitySlider}
-              />
-              <span style={s.opacityValue}>{Math.round(opacity * 100)}%</span>
+                style={s.slider} />
+              <span style={s.sliderValue}>{Math.round(opacity * 100)}%</span>
             </div>
           </div>
-        </div>
 
-        <div style={s.sep} />
+          <div style={s.sep} />
 
-        {/* Undo/redo group */}
-        <div style={s.group}>
-          <button
-            onClick={onUndo}
-            disabled={!canUndo}
-            title="Undo (Ctrl+Z)"
-            style={{ ...s.btn, opacity: canUndo ? 1 : 0.3 }}
-          >
-            <UndoIcon />
-          </button>
-          <button
-            onClick={onRedo}
-            disabled={!canRedo}
-            title="Redo (Ctrl+Shift+Z)"
-            style={{ ...s.btn, opacity: canRedo ? 1 : 0.3 }}
-          >
-            <RedoIcon />
-          </button>
+          {/* Font Size (visible when text tool or text shape selected) */}
+          <div style={s.propGroup}>
+            <span style={s.propLabel}>Font</span>
+            <select
+              value={fontSize}
+              onChange={(e) => onFontSizeChange(Number(e.target.value))}
+              style={s.select}
+            >
+              {FONT_SIZES.map((sz) => (
+                <option key={sz} value={sz}>{sz}px</option>
+              ))}
+            </select>
+          </div>
         </div>
       </div>
     </>
@@ -242,13 +230,13 @@ const s: Record<string, React.CSSProperties> = {
     top: 14,
     left: 14,
     zIndex: 200,
-    width: 36,
-    height: 36,
-    borderRadius: 8,
+    width: 40,
+    height: 40,
+    borderRadius: 10,
     border: "none",
-    background: "rgba(255,255,255,0.9)",
+    background: "rgba(255,255,255,0.92)",
     backdropFilter: "blur(8px)",
-    boxShadow: "0 1px 6px rgba(0,0,0,0.1), 0 0 0 1px rgba(0,0,0,0.05)",
+    boxShadow: "0 1px 8px rgba(0,0,0,0.1), 0 0 0 1px rgba(0,0,0,0.04)",
     cursor: "pointer",
     display: "flex",
     alignItems: "center",
@@ -261,12 +249,22 @@ const s: Record<string, React.CSSProperties> = {
     transform: "translateX(-50%)",
     zIndex: 200,
     display: "flex",
+    flexDirection: "column" as const,
+    padding: "8px 12px",
+    background: "#2c2c2c",
+    borderRadius: 14,
+    boxShadow: "0 4px 28px rgba(0,0,0,0.3), 0 0 0 1px rgba(255,255,255,0.06)",
+    gap: 0,
+  },
+  row: {
+    display: "flex",
     alignItems: "center",
     gap: 4,
-    padding: "6px 10px",
-    background: "#2c2c2c",
-    borderRadius: 12,
-    boxShadow: "0 4px 24px rgba(0,0,0,0.25), 0 0 0 1px rgba(255,255,255,0.06)",
+  },
+  divider: {
+    height: 1,
+    background: "rgba(255,255,255,0.08)",
+    margin: "6px 0",
   },
   group: {
     display: "flex",
@@ -277,32 +275,54 @@ const s: Record<string, React.CSSProperties> = {
     width: 1,
     height: 28,
     background: "rgba(255,255,255,0.1)",
-    margin: "0 6px",
+    margin: "0 8px",
   },
-  btn: {
-    width: 36,
-    height: 36,
-    borderRadius: 8,
-    border: "none",
-    cursor: "pointer",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    color: "#c1c1c1",
-    transition: "background 0.12s",
-  },
-  colorSection: {
+  toolBtn: {
     display: "flex",
     flexDirection: "column" as const,
-    gap: 3,
+    alignItems: "center",
+    gap: 2,
+    padding: "6px 10px",
+    borderRadius: 10,
+    border: "none",
+    cursor: "pointer",
+    transition: "background 0.12s",
+    minWidth: 48,
   },
-  colorLabel: {
-    fontSize: 9,
+  toolLabel: {
+    fontSize: 10,
     fontWeight: 600,
-    color: "#888",
+    letterSpacing: 0.2,
+  },
+  actionBtn: {
+    display: "flex",
+    flexDirection: "column" as const,
+    alignItems: "center",
+    gap: 2,
+    padding: "6px 10px",
+    borderRadius: 10,
+    border: "none",
+    cursor: "pointer",
+    background: "transparent",
+    color: "#b0b3c4",
+    minWidth: 44,
+  },
+  actionLabel: {
+    fontSize: 10,
+    fontWeight: 600,
+    color: "#8b8fa3",
+  },
+  propGroup: {
+    display: "flex",
+    flexDirection: "column" as const,
+    gap: 4,
+  },
+  propLabel: {
+    fontSize: 10,
+    fontWeight: 700,
+    color: "#777",
     textTransform: "uppercase" as const,
     letterSpacing: 0.8,
-    fontFamily: "'DM Mono', monospace",
   },
   swatchRow: {
     display: "flex",
@@ -310,13 +330,13 @@ const s: Record<string, React.CSSProperties> = {
     alignItems: "center",
   },
   swatch: {
-    width: 18,
-    height: 18,
-    borderRadius: 4,
+    width: 20,
+    height: 20,
+    borderRadius: 5,
     border: "none",
     cursor: "pointer",
     padding: 0,
-    transition: "box-shadow 0.12s, transform 0.12s",
+    transition: "box-shadow 0.12s",
     position: "relative" as const,
     display: "flex",
     alignItems: "center",
@@ -328,7 +348,7 @@ const s: Record<string, React.CSSProperties> = {
     cursor: "pointer",
   },
   plusIcon: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: 700,
     color: "rgba(255,255,255,0.5)",
     mixBlendMode: "difference" as const,
@@ -340,18 +360,30 @@ const s: Record<string, React.CSSProperties> = {
     opacity: 0,
     overflow: "hidden" as const,
   },
-  opacitySlider: {
+  slider: {
     width: 80,
     height: 4,
     cursor: "pointer",
     accentColor: "#5b5bff",
   },
-  opacityValue: {
-    fontSize: 10,
+  sliderValue: {
+    fontSize: 11,
     fontWeight: 600,
     color: "#888",
-    fontFamily: "'DM Mono', monospace",
-    minWidth: 30,
+    fontFamily: "monospace",
+    minWidth: 32,
     textAlign: "right" as const,
+  },
+  select: {
+    background: "#3a3a3a",
+    color: "#ccc",
+    border: "1px solid #555",
+    borderRadius: 6,
+    padding: "4px 8px",
+    fontSize: 12,
+    fontWeight: 600,
+    cursor: "pointer",
+    outline: "none",
+    fontFamily: "monospace",
   },
 };

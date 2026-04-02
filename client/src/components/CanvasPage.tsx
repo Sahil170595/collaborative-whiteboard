@@ -76,6 +76,7 @@ export default function CanvasPage({
   const [fillColor, setFillColor] = useState("#3498db");
   const [strokeColor, setStrokeColor] = useState("#000000");
   const [opacity, setOpacity] = useState(1);
+  const [fontSize, setFontSize] = useState(20);
   const [undoCount, setUndoCount] = useState(0);
   const [redoCount, setRedoCount] = useState(0);
   const [onlineUsers, setOnlineUsers] = useState<PresenceUser[]>([]);
@@ -307,7 +308,7 @@ export default function CanvasPage({
       if (currentTool === "text") {
         const text = prompt("Enter text:");
         if (!text) return;
-        const fontSize = 20;
+        // fontSize comes from toolbar state
         const newShape: Shape = {
           id: crypto.randomUUID(),
           type: "text",
@@ -1002,6 +1003,21 @@ export default function CanvasPage({
         onStrokeChange={handleStrokeChange}
         opacity={opacity}
         onOpacityChange={handleOpacityChange}
+        fontSize={fontSize}
+        onFontSizeChange={(size: number) => {
+          setFontSize(size);
+          const selId = selectedIdRef.current;
+          if (selId) {
+            const shape = shapesRef.current.find((s) => s.id === selId);
+            if (shape && shape.type === "text") {
+              const oldSize = shape.fontSize || 20;
+              doAction(
+                { kind: "update", shapeId: selId, props: { fontSize: size } },
+                { kind: "update", shapeId: selId, props: { fontSize: oldSize } }
+              );
+            }
+          }
+        }}
         canUndo={undoCount > 0}
         canRedo={redoCount > 0}
         onUndo={undo}
