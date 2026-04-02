@@ -3,17 +3,39 @@
 from __future__ import annotations
 
 import os
+import time
+from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 
 import bcrypt
 import jwt
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from app.db import get_pool
 from app.deps import get_current_user
 from app.types import AuthResponse, AuthUser
+
+# ---------------------------------------------------------------------------
+# Simple in-memory rate limiter: {ip: [timestamps]}
+# ---------------------------------------------------------------------------
+
+_rate_limits: dict[str, list[float]] = defaultdict(list)
+RATE_LIMIT_WINDOW = 60  # seconds
+RATE_LIMIT_MAX = 5  # max attempts per window
+
+
+def _check_rate_limit(ip: str) -> bool:
+    """Returns True if rate limited (should reject)."""
+    now = time.time()
+    attempts = _rate_limits[ip]
+    # Prune old entries
+    _rate_limits[ip] = [t for t in attempts if now - t < RATE_LIMIT_WINDOW]
+    if len(_rate_limits[ip]) >= RATE_LIMIT_MAX:
+        return True
+    _rate_limits[ip].append(now)
+    return False
 
 # ---------------------------------------------------------------------------
 # JWT configuration
@@ -74,8 +96,12 @@ auth_router = APIRouter()
 
 
 @auth_router.post("/signup")
-async def signup(body: SignupRequestBody) -> JSONResponse:
+async def signup(body: SignupRequestBody, request: Request) -> JSONResponse:
     """Register a new user and return an auth token."""
+    client_ip = request.client.host if request.client else "unknown"
+    if _check_rate_limit(client_ip):
+        return JSONResponse(status_code=429, content={"error": "rate_limited"})
+
     pool = await get_pool()
     password_hash = _hash_password(body.password)
 
@@ -127,8 +153,12 @@ async def signup(body: SignupRequestBody) -> JSONResponse:
 
 
 @auth_router.post("/login")
-async def login(body: LoginRequestBody) -> JSONResponse:
+async def login(body: LoginRequestBody, request: Request) -> JSONResponse:
     """Authenticate an existing user and return an auth token."""
+    client_ip = request.client.host if request.client else "unknown"
+    if _check_rate_limit(client_ip):
+        return JSONResponse(status_code=429, content={"error": "rate_limited"})
+
     pool = await get_pool()
 
     async with pool.acquire() as conn:

@@ -58,6 +58,8 @@ Composite primary key: `(canvas_id, user_id)`.
 | `stroke_width` | `DOUBLE PRECISION` | NOT NULL | `2` |
 | `text` | `TEXT` | nullable | -- |
 | `font_size` | `DOUBLE PRECISION` | nullable | -- |
+| `opacity` | `DOUBLE PRECISION` | NOT NULL | `1` |
+| `border_radius` | `DOUBLE PRECISION` | NOT NULL | `0` |
 
 Note: `id` has no server-side default. UUIDs are generated client-side (`crypto.randomUUID()`) and passed through. The `ON CONFLICT (id) DO NOTHING` clause in insert prevents duplicates.
 
@@ -110,6 +112,9 @@ Deleting a canvas cascades to remove its members and shapes. Deleting a user cas
                                                | stroke_width|
                                                | text        |
                                                | font_size   |
+                                               | opacity     |
+                                               | border_     |
+                                               |   radius    |
                                                +-------------+
 ```
 
@@ -139,6 +144,8 @@ interface Shape {
   strokeWidth: number; // pixel width
   text?: string;       // only for type "text"
   fontSize?: number;   // only for type "text"
+  opacity?: number;    // 0-1, default 1
+  borderRadius?: number; // rounded corners for rectangles, default 0
 }
 ```
 
@@ -149,6 +156,7 @@ interface ShapeProps {
   x: number; y: number; width: number; height: number;
   fill: string; stroke: string; strokeWidth: number;
   text?: string; fontSize?: number;
+  opacity?: number; borderRadius?: number;
 }
 
 type ShapePatch = Partial<ShapeProps>;
@@ -249,15 +257,23 @@ SHAPE_DB_TO_WIRE = {
 SHAPE_WIRE_TO_DB = {value: key for key, value in SHAPE_DB_TO_WIRE.items()}
 ```
 
+ws.py also defines local extra mappings for the newer columns:
+
+```python
+_EXTRA_DB_TO_WIRE = {"border_radius": "borderRadius"}
+_EXTRA_WIRE_TO_DB = {"borderRadius": "border_radius"}
+```
+
 | Wire (camelCase) | DB Column (snake_case) | Where Mapped |
 |-------------------|----------------------|--------------|
 | `strokeWidth` | `stroke_width` | `_row_to_shape`, `_shape_to_columns`, `_persist_update` in ws.py; manual mapping in canvas.py |
 | `fontSize` | `font_size` | Same |
+| `borderRadius` | `border_radius` | `_EXTRA_DB_TO_WIRE` / `_EXTRA_WIRE_TO_DB` in ws.py |
 | `ownerId` | `owner_id` | canvas.py (manual) |
 | `createdAt` | `created_at` | canvas.py (manual, `.isoformat()`) |
 | `userId` | `user_id` | canvas.py members (manual) |
 
-All other shape column names are identical between wire and DB (`id`, `type`, `x`, `y`, `width`, `height`, `fill`, `stroke`).
+All other shape column names are identical between wire and DB (`id`, `type`, `x`, `y`, `width`, `height`, `fill`, `stroke`, `opacity`).
 
 ---
 

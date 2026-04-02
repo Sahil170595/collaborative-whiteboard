@@ -11,7 +11,7 @@ server/
     deps.py            # get_current_user JWT dependency for HTTP routes
     types.py           # Shared contract types (read-only, mirrors client/src/types.ts)
     auth.py            # auth_router: signup, login, /me
-    canvas.py          # canvas_router: list, create, detail, invite
+    canvas.py          # canvas_router: list, create, detail, invite, delete
     ws.py              # websocket_endpoint: real-time ops, cursors, presence
   schema.sql           # PostgreSQL DDL (mounted as initdb script)
   pyproject.toml       # Python project config and dependencies
@@ -200,6 +200,10 @@ async with conn.transaction():
     await conn.execute("INSERT INTO canvas_members ...", ...)
 ```
 
+### Canvas Deletion (canvas.py)
+
+`DELETE /{canvas_id}` checks that the authenticated user is the canvas owner (`canvases.owner_id`). Non-owners receive 403 `not_owner`. On success, the canvas row is deleted and all associated shapes and memberships are removed by PostgreSQL's `ON DELETE CASCADE` foreign keys.
+
 ---
 
 ## WebSocket Handler Internals (ws.py)
@@ -299,6 +303,7 @@ Dynamic INSERT and UPDATE queries in ws.py accept field names from client-provid
 _ALLOWED_SHAPE_COLS = frozenset({
     "id", "type", "x", "y", "width", "height",
     "fill", "stroke", "stroke_width", "text", "font_size",
+    "opacity", "border_radius",
 })
 
 _ALLOWED_UPDATE_COLS = _ALLOWED_SHAPE_COLS - {"id", "type"}
@@ -307,7 +312,7 @@ _ALLOWED_UPDATE_COLS = _ALLOWED_SHAPE_COLS - {"id", "type"}
 In `_shape_to_columns` (for INSERT):
 ```python
 for wire_key, value in shape.items():
-    db_key = SHAPE_WIRE_TO_DB.get(wire_key, wire_key)
+    db_key = SHAPE_WIRE_TO_DB.get(wire_key) or _EXTRA_WIRE_TO_DB.get(wire_key, wire_key)
     if db_key not in _ALLOWED_SHAPE_COLS:
         continue  # silently drop unknown keys
 ```
@@ -315,10 +320,12 @@ for wire_key, value in shape.items():
 In `_persist_update` (for UPDATE):
 ```python
 for wire_key, value in props.items():
-    db_key = SHAPE_WIRE_TO_DB.get(wire_key, wire_key)
+    db_key = SHAPE_WIRE_TO_DB.get(wire_key) or _EXTRA_WIRE_TO_DB.get(wire_key, wire_key)
     if db_key not in _ALLOWED_UPDATE_COLS:
         continue  # silently drop unknown keys
 ```
+
+ws.py defines local extra mapping dicts (`_EXTRA_DB_TO_WIRE`, `_EXTRA_WIRE_TO_DB`) for `borderRadius` <-> `border_radius`. The `opacity` column has the same name on the wire and in the DB, so it needs no mapping entry.
 
 Only whitelisted column names are interpolated into SQL. Values always go through parameterized placeholders (`$1`, `$2`, ...).
 

@@ -235,6 +235,30 @@ The `identifier` field is matched against `username` first, then `email`.
 
 ---
 
+### DELETE /api/canvases/{canvasId}
+
+Delete a canvas. Only the canvas owner may perform this action. Deleting a canvas cascades to remove all associated shapes and memberships (via foreign key `ON DELETE CASCADE`).
+
+**Success response (200):**
+
+```json
+{
+  "ok": true
+}
+```
+
+**Error responses:**
+
+| Status | Body | Condition |
+|--------|------|-----------|
+| 401 | `{ "error": "unauthorized" }` | Missing or invalid token |
+| 403 | `{ "error": "not_owner" }` | Authenticated user is not the canvas owner |
+| 404 | `{ "error": "not_found" }` | Canvas does not exist (or invalid UUID) |
+
+**Implementation notes:** Ownership is checked by comparing `canvases.owner_id` against the authenticated user's ID. Non-owners who are members still receive 403 `not_owner`.
+
+---
+
 ## WebSocket Protocol
 
 ### Connection
@@ -409,7 +433,8 @@ This is enforced by a global `HTTPException` handler in `main.py` that converts 
 | `invalid_credentials` | 401 | POST /api/auth/login |
 | `username_taken` | 409 | POST /api/auth/signup |
 | `email_taken` | 409 | POST /api/auth/signup |
-| `not_found` | 404 | GET /api/canvases/{id} |
+| `not_found` | 404 | GET /api/canvases/{id}, DELETE /api/canvases/{id} |
+| `not_owner` | 403 | DELETE /api/canvases/{id} |
 | `not_a_member` | 403 | GET /api/canvases/{id}, POST .../invite |
 | `canvas_not_found` | 404 | POST .../invite |
 | `user_not_found` | 404 | POST .../invite |

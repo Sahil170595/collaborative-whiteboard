@@ -23,7 +23,8 @@ App (App.tsx)
        +-- Toolbar (components/Toolbar.tsx)
        |     Floating bottom toolbar (fixed, centered, dark background).
        |     Inline SVG icons for tools (select, rectangle, ellipse, line, text).
-       |     Fill/stroke color palette with custom color picker. Undo/redo.
+       |     Fill/stroke color palette with custom color picker.
+       |     Opacity slider (0-100%, maps to shape.opacity 0-1). Undo/redo.
        |     Separate back button fixed at top-left.
        |
        +-- <canvas> (HTML5 Canvas element)
@@ -46,7 +47,7 @@ App (App.tsx)
 | `Auth` | Form fields, mode (login/signup), error, loading | `api.signup()`, `api.login()` |
 | `CanvasList` | Canvas array, new name input, loading, error | `api.getCanvases()`, `api.createCanvas()` |
 | `CanvasPage` | All whiteboard state (see below) | `api.getCanvasDetail()`, WebSocket |
-| `Toolbar` | None (controlled component) | None |
+| `Toolbar` | None (controlled; receives opacity, fill, stroke) | None |
 | `InvitePanel` | Invite input, message, expanded toggle | `api.inviteToCanvas()` |
 
 ---
@@ -87,6 +88,7 @@ CanvasPage uses two categories of state:
 | `currentTool` | `Tool` | Toolbar highlight, cursor style |
 | `fillColor` | `string` | Color picker value |
 | `strokeColor` | `string` | Color picker value |
+| `opacity` | `number` | Opacity slider value (0-1) |
 | `undoCount` | `number` | Undo button enabled/disabled |
 | `redoCount` | `number` | Redo button enabled/disabled |
 | `onlineUsers` | `PresenceUser[]` | InvitePanel user list |
@@ -231,7 +233,7 @@ Called via `requestAnimationFrame` on every state change.
 3. Fill background (#f8f9fb)
 4. Draw dot grid (1px dots at 20px spacing, color #d4d5db)
 5. for each shape in shapes (EXCEPT selected shape):
-     drawShape(ctx, shape)
+     drawShape(ctx, shape)                       // respects shape.opacity and borderRadius
 6. Draw selected shape LAST (z-order lift for visual prominence)
 7. if previewShape:
      drawShape(ctx, previewShape)               // live drawing preview
@@ -258,12 +260,14 @@ ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
 ### Shape Drawing
 
+Each shape is drawn inside a `ctx.save()`/`ctx.restore()` block. `ctx.globalAlpha` is set from `shape.opacity` (defaults to 1) so per-shape opacity is respected.
+
 | Shape Type | Drawing Method |
 |------------|---------------|
-| Rectangle | `fillRect` + `strokeRect` |
+| Rectangle | If `borderRadius > 0`: `ctx.roundRect(...)` with `fill` + `stroke`. Otherwise `fillRect` + `strokeRect`. |
 | Ellipse | `ctx.ellipse(cx, cy, rx, ry, ...)` with `fill` + `stroke` |
 | Line | `moveTo(x, y)` + `lineTo(x+w, y+h)` with `stroke` |
-| Text | `fillText` at `(x, y + fontSize)`, optional `strokeText` |
+| Text | `fillText` at `(x, y + fontSize)`, optional `strokeText`. Width is now measured with `ctx.measureText()` at render time instead of estimated, and height uses `fontSize * 1.2` for line-height accuracy. This fixes hit-testing for variable-width fonts. |
 
 ### Selection Visualization
 
