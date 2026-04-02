@@ -58,6 +58,7 @@ export default function CanvasPage({
   const undoStackRef = useRef<UndoEntry[]>([]);
   const redoStackRef = useRef<UndoEntry[]>([]);
   const pendingOpsRef = useRef<Set<string>>(new Set());
+  const pendingOpDataRef = useRef<Map<string, Operation>>(new Map());
   const cursorsRef = useRef<Map<string, CursorInfo>>(new Map());
   const onlineUsersRef = useRef<PresenceUser[]>([]);
   const selectedIdRef = useRef<string | null>(null);
@@ -147,6 +148,7 @@ export default function CanvasPage({
       // Apply optimistically
       shapesRef.current = applyOp(shapesRef.current, op);
       pendingOpsRef.current.add(opId);
+      pendingOpDataRef.current.set(opId, op);
       ws.send(JSON.stringify({ type: "op", op, opId } satisfies ClientMessage));
       requestRender();
     },
@@ -711,28 +713,48 @@ export default function CanvasPage({
         const msg = parsed as ServerMessage;
 
         switch (msg.type) {
-          case "init":
+          case "init": {
             wsInitReceivedRef.current = true;
             shapesRef.current = msg.shapes;
             seqRef.current = msg.seq;
             onlineUsersRef.current = msg.users;
+
+            // Replay unconfirmed ops from previous session
+            const unconfirmed = Array.from(pendingOpDataRef.current.values());
+
             // Clear stale state from previous session (C3+C4)
             undoStackRef.current = [];
             redoStackRef.current = [];
             pendingOpsRef.current.clear();
+            pendingOpDataRef.current.clear();
             // Clear cursor lerp targets on reconnect
             cursorTargetsRef.current.clear();
             cursorsRef.current.clear();
             setUndoCount(0);
             setRedoCount(0);
             setOnlineUsers([...msg.users]);
+
+            // Re-send unconfirmed ops with new opIds
+            for (const op of unconfirmed) {
+              const newOpId = crypto.randomUUID();
+              shapesRef.current = applyOp(shapesRef.current, op);
+              pendingOpsRef.current.add(newOpId);
+              pendingOpDataRef.current.set(newOpId, op);
+              const currentWs = wsRef.current;
+              if (currentWs && currentWs.readyState === WebSocket.OPEN) {
+                currentWs.send(JSON.stringify({ type: "op", op, opId: newOpId }));
+              }
+            }
+
             requestRender();
             break;
+          }
 
           case "op": {
             const isOwnEcho = pendingOpsRef.current.has(msg.opId);
             if (isOwnEcho) {
               pendingOpsRef.current.delete(msg.opId);
+              pendingOpDataRef.current.delete(msg.opId);
             }
             // For "add" ops that we sent: skip (shape already in array).
             // For "update"/"delete" ops: ALWAYS re-apply from server to
