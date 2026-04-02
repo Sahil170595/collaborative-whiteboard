@@ -133,3 +133,17 @@ cp ~/.claude/sessions/<session-id>.json logs/
 ```
 
 Session transcripts are stored in `~/.claude/` and can be copied into the `logs/` directory.
+
+## Codex Logs Added
+
+- Marker message for Codex export: `from this message on, can we do what LOGS.md wants to do?`
+- Main Codex thread exported from that marker onward to `logs/codex-main-from-logs-marker.jsonl`
+- Additional Codex review threads copied to:
+  - `logs/codex-review-1-backend-bugs.jsonl`
+  - `logs/codex-review-2-frontend-regressions.jsonl`
+  - `logs/codex-review-3-backend-correctness.jsonl`
+  - `logs/codex-review-4-frontend-canvas.jsonl`
+  - `logs/codex-review-5-backend-correctness-bugs.jsonl`
+  - `logs/codex-review-6-frontend-bugs.jsonl`
+
+If more Codex conversation happens after this note, refresh `logs/codex-main-from-logs-marker.jsonl` again right before the final commit so it includes the latest tail of the main thread.
