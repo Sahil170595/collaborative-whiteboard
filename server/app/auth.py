@@ -23,18 +23,18 @@ from app.types import AuthResponse, AuthUser
 
 _rate_limits: dict[str, list[float]] = defaultdict(list)
 RATE_LIMIT_WINDOW = 60  # seconds
-RATE_LIMIT_MAX = 5  # max attempts per window
+RATE_LIMIT_MAX = 20  # max attempts per window per key (generous for shared NAT/VPN)
 
 
-def _check_rate_limit(ip: str) -> bool:
-    """Returns True if rate limited (should reject)."""
+def _check_rate_limit(ip: str, action: str = "auth") -> bool:
+    """Returns True if rate limited (should reject). Keyed by ip+action."""
+    key = f"{ip}:{action}"
     now = time.time()
-    attempts = _rate_limits[ip]
-    # Prune old entries
-    _rate_limits[ip] = [t for t in attempts if now - t < RATE_LIMIT_WINDOW]
-    if len(_rate_limits[ip]) >= RATE_LIMIT_MAX:
+    attempts = _rate_limits[key]
+    _rate_limits[key] = [t for t in attempts if now - t < RATE_LIMIT_WINDOW]
+    if len(_rate_limits[key]) >= RATE_LIMIT_MAX:
         return True
-    _rate_limits[ip].append(now)
+    _rate_limits[key].append(now)
     return False
 
 # ---------------------------------------------------------------------------
@@ -99,7 +99,7 @@ auth_router = APIRouter()
 async def signup(body: SignupRequestBody, request: Request) -> JSONResponse:
     """Register a new user and return an auth token."""
     client_ip = request.client.host if request.client else "unknown"
-    if _check_rate_limit(client_ip):
+    if _check_rate_limit(client_ip, "signup"):
         return JSONResponse(status_code=429, content={"error": "rate_limited"})
 
     pool = await get_pool()
@@ -156,7 +156,7 @@ async def signup(body: SignupRequestBody, request: Request) -> JSONResponse:
 async def login(body: LoginRequestBody, request: Request) -> JSONResponse:
     """Authenticate an existing user and return an auth token."""
     client_ip = request.client.host if request.client else "unknown"
-    if _check_rate_limit(client_ip):
+    if _check_rate_limit(client_ip, "login"):
         return JSONResponse(status_code=429, content={"error": "rate_limited"})
 
     pool = await get_pool()

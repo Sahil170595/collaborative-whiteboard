@@ -357,7 +357,7 @@ export default function CanvasPage({
         }
 
         // Hit test shapes
-        const hit = hitTest(shapesRef.current, x, y);
+        const hit = hitTest(shapesRef.current, x, y, selectedIdRef.current);
         if (hit) {
           selectedIdRef.current = hit.id;
           setOpacity((hit as any).opacity ?? 1);

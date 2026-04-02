@@ -228,8 +228,13 @@ function drawCursor(ctx: CanvasRenderingContext2D, cursor: CursorInfo): void {
   ctx.restore();
 }
 
-export function hitTest(shapes: Shape[], x: number, y: number): Shape | null {
-  // Iterate in reverse z-order (topmost first)
+export function hitTest(shapes: Shape[], x: number, y: number, selectedId?: string | null): Shape | null {
+  // Check selected shape first (it renders on top, so it should hit-test on top)
+  if (selectedId) {
+    const sel = shapes.find((s) => s.id === selectedId);
+    if (sel && isPointInShape(sel, x, y)) return sel;
+  }
+  // Then reverse z-order for the rest
   for (let i = shapes.length - 1; i >= 0; i--) {
     const s = shapes[i];
     if (isPointInShape(s, x, y)) {

@@ -152,7 +152,7 @@ async def get_canvas(
         shape_rows = await conn.fetch(
             """
             SELECT id, type, x, y, width, height, fill, stroke,
-                   stroke_width, text, font_size
+                   stroke_width, text, font_size, opacity, border_radius
             FROM shapes
             WHERE canvas_id = $1
             ORDER BY created_at, id
@@ -188,6 +188,10 @@ async def get_canvas(
             s["text"] = r["text"]
         if r["font_size"] is not None:
             s["fontSize"] = r["font_size"]
+        if r["opacity"] != 1:
+            s["opacity"] = r["opacity"]
+        if r["border_radius"] != 0:
+            s["borderRadius"] = r["border_radius"]
         shapes.append(s)
 
     members = [
