@@ -1,71 +1,151 @@
-# Mechanize Take-Home: Collaborative Whiteboard
+# Collaborative Whiteboard
 
-Thank you for taking the time to interview with Mechanize! This repo contains your assignment for the final phase of our interview process, an open-ended take-home assignment.
+A real-time collaborative whiteboard where small teams can sketch, annotate, and brainstorm together on a shared canvas. Built for synchronous design reviews — 2-5 people on a call, drawing and editing at the same time.
 
-The take-home begins with a solo work block of three hours in which you can complete the task as described below.
+![Stack](https://img.shields.io/badge/React_19-TypeScript-blue) ![Stack](https://img.shields.io/badge/FastAPI-Python_3.12-green) ![Stack](https://img.shields.io/badge/PostgreSQL-16-blue) ![Stack](https://img.shields.io/badge/WebSocket-Realtime-orange)
 
-There is a 20-minute break after the solo block. During this time, our team will review your submission. If we'd like to move forward based on your progress, we'll talk to you on the follow-up call. If not, we'll cancel the follow-up calendar invite and send you an email cancelling the call.
+---
 
+## What It Does
 
-## Getting started
+- **Draw shapes** — rectangles, ellipses, lines, and text with customizable fill, stroke, opacity, and border radius
+- **Edit in real time** — select, move, resize, delete, and recolor shapes; changes broadcast instantly to all connected users
+- **Live cursors** — see where teammates are pointing with smooth interpolated cursors and username labels
+- **Undo / redo** — per-user history stacks that work correctly under concurrent edits (field-level inverse operations)
+- **Canvas persistence** — everything saves to PostgreSQL automatically; close the tab, come back later, it's all there
+- **User accounts** — signup/login with JWT auth; create canvases and invite collaborators by username or email
+- **Resilient connections** — automatic WebSocket reconnection with exponential backoff, pending op replay, and server heartbeat
 
-1. **Clone this repo** (do _not_ fork it):
-   ```bash
-   git clone <this-repo-url>
-   cd <this-repo-name>
-   ```
-2. See `SETUP.md` for how to run the scaffold.
-3. Do all of your work on the **`main` branch**. Commit early and often.
-4. **Push your commits directly to `main`** — do not open a pull request.
-   ```bash
-   git push origin main
-   ```
-5. Your **final commit must be pushed no later than three hours** after your start time.
-   Anything pushed after the deadline will not be considered.
+## Quick Start
 
-## What you're building
+### Docker (recommended)
 
-A real-time collaborative whiteboard. Multiple users, same canvas, editing together.
+```bash
+git clone https://github.com/Sahil170595/collaborative-whiteboard.git
+cd collaborative-whiteboard
+docker compose up --build
+```
 
-## Deployment context
+Open `http://localhost:5173`, create an account, and start drawing.
 
-This whiteboard is for synchronous design reviews, consisting of a small group (typically 2-5 people) on a call together, using the canvas as a shared scratchpad while they talk through a design. 
-- Each user has an account and can create canvases or be invited to others'. 
-- It's common for several people to be editing at once -- often the same objects -- as they try alternatives or work through a disagreement in real time. 
-- A typical session runs 30-90 minutes. 
-- Teams sometimes return to a canvas in a later session to recall what was decided.
+### Local Development
 
-## Required features
+```bash
+# Start the database
+docker compose up db
 
-- User accounts (signup, login, logout)
-- Create a canvas, open an existing canvas
-- Invite other users to a canvas (by username or email -- a simple mechanism is fine)
-- Shapes: rectangle, ellipse, line, text
-- Select, move, resize, delete, change color
-- Undo / redo
-- See other users' cursors
-- Canvas state persists across sessions
+# Backend
+cd server
+pip install -e .
+uvicorn app.main:app --reload --port 3001
 
-## Out of scope
+# Frontend (separate terminal)
+cd client
+npm install
+npm run dev
+```
 
-Don't spend time on these feature, as we won't evaluate them:
+## Architecture
 
-- Collaborative text editing within text elements (treating a text update as a single operation is fine -- you don't need to handle two users typing in the same text box simultaneously)
-- Granular permissions (viewer/editor/owner roles, share-with-link, etc.)
-- Rich text editing, images, or file uploads
-- Canvas zoom, pan, or infinite canvas
-- Export (PNG, SVG, PDF)
-- Version history or named snapshots
-- Mobile or touch support
+```
+Browser (React 19)                    Server (FastAPI)              PostgreSQL
+┌─────────────────┐    WebSocket     ┌──────────────────┐         ┌──────────┐
+│  Canvas 2D API  │◄───────────────►│  /ws endpoint     │────────►│  shapes  │
+│  Optimistic UI  │    JSON ops      │  seq counter      │         │  users   │
+│  Undo/Redo      │                  │  broadcast fan-out│         │  canvas  │
+│  Cursor lerp    │    REST API      │  /api/auth        │         │  members │
+│  Reconnect      │◄───────────────►│  /api/canvases    │         └──────────┘
+└─────────────────┘                  └──────────────────┘
+```
 
-## Provided scaffold
+**Key design decisions:**
 
-This repository contains a minimal scaffold -- frontend, backend, and database wired together, but no whiteboard logic. You are free to restructure anything in the scaffold, but you are expected to stay within the provided stack; don't swap out the framework or database.
+- **Server-authoritative ordering** — each canvas has a monotonic `seq` counter; the server assigns sequence numbers to operations, making ordering deterministic across all clients
+- **Optimistic updates** — the client applies operations immediately for zero-latency feel, then reconciles when the server echoes them back with a `seq` number
+- **Last-writer-wins at field level** — concurrent edits to *different* fields on the same shape merge cleanly; same-field conflicts resolve by server ordering
+- **Per-user undo stacks** — undo only reverses *your* operations, not teammates'; inverse ops contain only the fields you changed
+- **Single WebSocket per session** — all shape ops, cursor positions, and presence events flow through one connection per user per canvas
 
-## How we evaluate
+## Tech Stack
 
-We evaluate whether your submission has a functional implementation of all required features above and is fit for the deployment context. Correctness and robustness for this use case and set of features matters more to us than other features beyond the required list, such as those listed as out of scope..
+| Layer      | Technology                            |
+|------------|---------------------------------------|
+| Frontend   | React 19, TypeScript 5.6, Vite 6     |
+| Backend    | FastAPI, Python 3.12, Uvicorn         |
+| Database   | PostgreSQL 16, asyncpg                |
+| Realtime   | WebSocket (Starlette built-in)        |
+| Auth       | JWT (PyJWT) + bcrypt                  |
+| Containers | Docker Compose                        |
 
-## Use of AI
+## Project Structure
 
-Use whatever AI tools you like. We recommend that you use frontier AI coding models. We are not aware of a candidate who has performed exceptionally on this take-home without using AI. However, note that you will be expected to **fully understand and defend** your implementation during the call after the solo block.
+```
+client/
+  src/
+    components/
+      Auth.tsx            # Login / signup card
+      CanvasList.tsx      # Canvas grid with create / delete
+      CanvasPage.tsx      # Main whiteboard (WS, rendering, input)
+      Toolbar.tsx         # Shape tools, colors, opacity, font size
+      InvitePanel.tsx     # Collaborator avatars + invite form
+    canvasRenderer.ts     # Canvas 2D rendering, hit-testing, cursors
+    operations.ts         # applyOp / reverseOp logic
+    api.ts                # Typed HTTP client
+    authStore.ts          # Token persistence (localStorage)
+    types.ts              # Shared TypeScript types
+  Dockerfile
+
+server/
+  app/
+    main.py               # FastAPI app, lifespan, CORS, routing
+    auth.py               # Signup, login, me endpoints
+    canvas.py             # Canvas CRUD, invite, delete
+    ws.py                 # WebSocket: ops, presence, heartbeat
+    db.py                 # asyncpg connection pool
+    deps.py               # JWT auth dependency
+    types.py              # Python type definitions
+  schema.sql              # Database DDL
+  tests/                  # 38 integration tests (pytest)
+  Dockerfile
+
+docs/                     # Architecture, API, data model, WS protocol
+docker-compose.yml
+```
+
+## Development
+
+```bash
+# Lint Python
+cd server && ruff check .
+
+# Type-check TypeScript
+cd client && npx tsc --noEmit
+
+# Run server tests (38 tests)
+cd server && pytest
+
+# Run client tests (28 tests)
+cd client && npx vitest run
+```
+
+## WebSocket Protocol
+
+All real-time communication uses a JSON message envelope over a single WebSocket connection:
+
+```jsonc
+// Client → Server
+{ "type": "add", "opId": "uuid", "shape": { ... } }
+{ "type": "update", "opId": "uuid", "id": "shape-id", "props": { "fill": "#ff0000" } }
+{ "type": "delete", "opId": "uuid", "id": "shape-id" }
+{ "type": "cursor", "x": 120, "y": 340 }
+
+// Server → Client
+{ "type": "init", "shapes": [...], "members": [...], "presence": [...] }
+{ "type": "add", "seq": 42, "opId": "uuid", "shape": { ... } }
+{ "type": "join", "userId": "...", "username": "..." }
+{ "type": "cursor", "userId": "...", "x": 120, "y": 340 }
+```
+
+## License
+
+MIT
